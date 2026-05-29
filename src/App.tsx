@@ -243,10 +243,16 @@ function App() {
   async function validateProject() {
     if (!project) return
     try {
-      const result = await api<{ ok: boolean; output: string }>(`/api/projects/${project.id}/validate`, {
-        method: 'POST',
-      })
-      setToast({ tone: 'ok', message: result.output.trim() })
+      const result = isDirty
+        ? await api<{ ok: boolean; output: string }>(`/api/projects/${project.id}/workflow/validate`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ content: editorValue }),
+        })
+        : await api<{ ok: boolean; output: string }>(`/api/projects/${project.id}/validate`, {
+          method: 'POST',
+        })
+      setToast({ tone: 'ok', message: `${isDirty ? '草稿' : '檔案'}驗證通過：${result.output.trim()}` })
     } catch (error) {
       setToast({ tone: 'error', message: errorMessage(error) })
     }
@@ -362,7 +368,7 @@ function App() {
           <div className="header-actions">
             <button type="button" onClick={validateProject} disabled={!project}>
               <CheckCircle2 size={16} />
-              驗證
+              {isDirty ? '驗證草稿' : '驗證'}
             </button>
             <button type="button" onClick={startRun} disabled={!project || !selectedWorkflow}>
               <Play size={16} />

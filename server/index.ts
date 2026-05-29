@@ -217,6 +217,21 @@ app.post('/api/projects/:projectId/validate', async (request, response) => {
   }
 })
 
+app.post('/api/projects/:projectId/workflow/validate', async (request, response) => {
+  try {
+    const project = await resolveProject(request.params.projectId)
+    const content = String(request.body?.content ?? '')
+    if (!content.trim()) {
+      response.status(400).json({ ok: false, message: 'workflow content is empty' })
+      return
+    }
+    const output = await validateWorkflowContent(project, content)
+    response.json({ ok: true, output })
+  } catch (error) {
+    response.status(400).json({ ok: false, message: errorMessage(error) })
+  }
+})
+
 app.put('/api/projects/:projectId/workflow', async (request, response) => {
   try {
     const project = await resolveProject(request.params.projectId)
@@ -226,15 +241,7 @@ app.put('/api/projects/:projectId/workflow', async (request, response) => {
       return
     }
 
-    YAML.parse(content)
-    const workflowDir = path.dirname(project.workflowPath)
-    const checkPath = path.join(workflowDir, 'workflow.studio-check.yaml')
-    await writeFile(checkPath, content, 'utf8')
-    try {
-      await runAiMc(['validate', '--spec', checkPath], project.rootPath)
-    } finally {
-      await rm(checkPath, { force: true })
-    }
+    await validateWorkflowContent(project, content)
 
     const backupPath = path.join(workflowDir, `workflow.${new Date().toISOString().replace(/[:.]/g, '-')}.bak.yaml`)
     const previous = await readFile(project.workflowPath, 'utf8')
@@ -293,6 +300,18 @@ async function scanProjects(): Promise<ProjectRecord[]> {
   }
 
   return projects.sort((left, right) => left.name.localeCompare(right.name))
+}
+
+async function validateWorkflowContent(project: ProjectRecord, content: string): Promise<string> {
+  YAML.parse(content)
+  const workflowDir = path.dirname(project.workflowPath)
+  const checkPath = path.join(workflowDir, 'workflow.studio-check.yaml')
+  await writeFile(checkPath, content, 'utf8')
+  try {
+    return await runAiMc(['validate', '--spec', checkPath], project.rootPath)
+  } finally {
+    await rm(checkPath, { force: true })
+  }
 }
 
 async function findWorkflowProjectRoots(root: string, maxDepth: number): Promise<string[]> {

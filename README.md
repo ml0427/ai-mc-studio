@@ -40,6 +40,7 @@ npm run dev
 - 建立 wizard run，並監看 run 狀態圖
 - 編輯並儲存 workflow YAML
 - 儲存前會先用 `ai-mc validate --spec <temp-file>` 驗證
+- 有未儲存變更時，「驗證」會改成驗證草稿內容，不會只驗證磁碟檔案
 - 儲存時會建立 `.bak.yaml` 備份
 - 未修改時不能儲存，修改後可一鍵還原目前檔案內容
 - Mermaid 會在需要畫圖時才載入，降低首屏 bundle 壓力

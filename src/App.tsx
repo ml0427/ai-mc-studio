@@ -10,6 +10,7 @@ import {
   RefreshCw,
   RotateCcw,
   Save,
+  Search,
   Workflow,
 } from 'lucide-react'
 import YAML from 'yaml'
@@ -110,6 +111,7 @@ function App() {
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [projectsRoot, setProjectsRoot] = useState('')
   const [scanDepth, setScanDepth] = useState(0)
+  const [projectFilter, setProjectFilter] = useState('')
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [project, setProject] = useState<ProjectDetail | null>(null)
   const [selectedWorkflow, setSelectedWorkflow] = useState('')
@@ -134,6 +136,16 @@ function App() {
   const selectedWorkflowSummary = project?.workflows.find((item) => item.name === selectedWorkflow)
   const selectedRun = runs.find((run) => run.runId === selectedRunId)
   const isDirty = Boolean(project && editorValue !== project.rawYaml)
+  const filteredProjects = useMemo(() => {
+    const keyword = projectFilter.trim().toLowerCase()
+    if (!keyword) return projects
+
+    return projects.filter((item) => [
+      item.name,
+      item.rootPath,
+      ...item.workflows.map((workflowItem) => workflowItem.name),
+    ].some((value) => value.toLowerCase().includes(keyword)))
+  }, [projectFilter, projects])
   const displayedWorkflowGraph = isDirty && workflow && selectedWorkflow
     ? buildClientMermaid(selectedWorkflow, workflow)
     : graphSource
@@ -436,8 +448,17 @@ function App() {
         <div className="rail-caption">掃描根目錄 · depth {scanDepth}</div>
         <div className="path-chip" title={projectsRoot}>{projectsRoot || '尚未載入'}</div>
 
+        <label className="rail-search">
+          <Search size={15} />
+          <input
+            value={projectFilter}
+            onChange={(event) => setProjectFilter(event.target.value)}
+            placeholder="搜尋專案或 workflow"
+          />
+        </label>
+
         <section className="project-list" aria-label="Projects">
-          {projects.map((item) => (
+          {filteredProjects.map((item) => (
             <button
               className={`project-row ${item.id === selectedProjectId ? 'active' : ''}`}
               key={item.id}
@@ -451,6 +472,9 @@ function App() {
               </span>
             </button>
           ))}
+          {filteredProjects.length === 0 && (
+            <div className="rail-empty">沒有符合的專案</div>
+          )}
         </section>
       </aside>
 

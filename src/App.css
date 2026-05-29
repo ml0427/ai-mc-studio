@@ -109,6 +109,33 @@ button {
   font-size: 12px;
 }
 
+.rail-search {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #313943;
+  border-radius: 6px;
+  background: #111418;
+  color: #a8b4c2;
+  padding: 8px 10px;
+}
+
+.rail-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #f8fafc;
+  font: inherit;
+  font-size: 13px;
+}
+
+.rail-search input::placeholder {
+  color: #768293;
+}
+
 .project-list {
   display: flex;
   flex-direction: column;
@@ -159,6 +186,14 @@ button {
 .project-row small {
   margin-top: 3px;
   color: #a8b4c2;
+}
+
+.rail-empty {
+  color: #a8b4c2;
+  border: 1px dashed #404955;
+  border-radius: 7px;
+  padding: 12px;
+  font-size: 13px;
 }
 
 .workbench {

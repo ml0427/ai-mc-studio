@@ -558,6 +558,88 @@ h1 {
   padding-left: 12px;
 }
 
+.run-details {
+  margin-top: 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 7px;
+  background: #f7f7f2;
+  padding: 10px;
+}
+
+.run-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.run-detail-grid span,
+.run-detail-section > span {
+  display: block;
+  color: #59616d;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.run-detail-grid strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #172033;
+  font-size: 13px;
+}
+
+.run-detail-section {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.run-detail-section pre {
+  margin: 0;
+  max-height: 120px;
+  overflow: auto;
+  border-radius: 6px;
+  background: #181d23;
+  color: #e5edf6;
+  padding: 8px;
+  font: 12px/1.5 Consolas, "Cascadia Code", monospace;
+}
+
+.run-detail-section small {
+  color: #6b7280;
+}
+
+.run-step-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.run-step-pills small {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #374151;
+  padding: 3px 7px;
+}
+
+.run-state-path {
+  margin-top: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #6b7280;
+  font-size: 12px;
+}
+
 .run-row {
   width: 100%;
   min-width: 0;

@@ -93,6 +93,19 @@ type WizardRunSummary = {
   statePath: string
 }
 
+type WizardRunState = {
+  run_id?: string
+  workflow?: string
+  status?: string
+  current_step?: string | null
+  completed_steps?: string[]
+  skipped_steps?: string[]
+  steps?: string[]
+  created_at?: string
+  updated_at?: string
+  inputs?: Record<string, unknown>
+}
+
 function App() {
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [projectsRoot, setProjectsRoot] = useState('')
@@ -106,6 +119,7 @@ function App() {
   const [runs, setRuns] = useState<WizardRunSummary[]>([])
   const [selectedRunId, setSelectedRunId] = useState('')
   const [runGraphSource, setRunGraphSource] = useState('')
+  const [selectedRunState, setSelectedRunState] = useState<WizardRunState | null>(null)
   const [runInputValues, setRunInputValues] = useState<Record<string, string>>({})
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null)
   const [toast, setToast] = useState<ToastState | null>(null)
@@ -135,6 +149,15 @@ function App() {
     }
   }, [])
 
+  const loadRunState = useCallback(async (projectId: string, runId: string) => {
+    try {
+      setSelectedRunState(await api<WizardRunState>(`/api/projects/${projectId}/runs/${encodeURIComponent(runId)}`))
+    } catch (error) {
+      setSelectedRunState(null)
+      setToast({ tone: 'error', message: errorMessage(error) })
+    }
+  }, [])
+
   const loadRuns = useCallback(async (
     projectId: string,
     preferredRunId = '',
@@ -147,16 +170,25 @@ function App() {
         ? wanted
         : data.runs[0]?.runId || ''
       setRuns(data.runs)
-      if (data.runs.length === 0) setRunGraphSource('')
+      if (data.runs.length === 0) {
+        setRunGraphSource('')
+        setSelectedRunState(null)
+      }
       setSelectedRunId(nextRunId)
-      if (nextRunId) await loadRunGraph(projectId, nextRunId)
+      if (nextRunId) {
+        await Promise.all([
+          loadRunGraph(projectId, nextRunId),
+          loadRunState(projectId, nextRunId),
+        ])
+      }
     } catch (error) {
       setRuns([])
       setSelectedRunId('')
       setRunGraphSource('')
+      setSelectedRunState(null)
       if (!options.quiet) setToast({ tone: 'error', message: errorMessage(error) })
     }
-  }, [loadRunGraph])
+  }, [loadRunGraph, loadRunState])
 
   useEffect(() => {
     void loadProjects()
@@ -360,7 +392,10 @@ function App() {
 
   function selectRun(runId: string) {
     setSelectedRunId(runId)
-    if (project) void loadRunGraph(project.id, runId)
+    if (project) {
+      void loadRunGraph(project.id, runId)
+      void loadRunState(project.id, runId)
+    }
   }
 
   function updateSelectedStep(field: 'type' | 'when' | 'output', value: string) {
@@ -633,10 +668,59 @@ function App() {
               {selectedRun && <span className="title-note">{selectedRun.runId}</span>}
             </div>
             {runGraphSource ? <MermaidChart chart={runGraphSource} /> : <EmptyState loading={loading} />}
+            {selectedRun && (
+              <RunDetails run={selectedRun} state={selectedRunState} />
+            )}
           </div>
         </section>
       </section>
     </main>
+  )
+}
+
+function RunDetails({ run, state }: { run: WizardRunSummary; state: WizardRunState | null }) {
+  const inputs = state?.inputs ?? {}
+  const completedSteps = state?.completed_steps ?? []
+  const skippedSteps = state?.skipped_steps ?? []
+  const pendingSteps = (state?.steps ?? []).filter(
+    (step) => !completedSteps.includes(step) && !skippedSteps.includes(step),
+  )
+
+  return (
+    <div className="run-details">
+      <div className="run-detail-grid">
+        <span>Status</span>
+        <strong>{run.status}</strong>
+        <span>Current</span>
+        <strong>{run.currentStep ?? 'done'}</strong>
+        <span>Progress</span>
+        <strong>{run.completedCount + run.skippedCount}/{run.totalSteps}</strong>
+        <span>Updated</span>
+        <strong>{formatDate(run.updatedAt)}</strong>
+      </div>
+
+      <div className="run-detail-section">
+        <span>Inputs</span>
+        {Object.keys(inputs).length === 0 ? (
+          <small>none</small>
+        ) : (
+          <pre>{JSON.stringify(inputs, null, 2)}</pre>
+        )}
+      </div>
+
+      <div className="run-detail-section">
+        <span>Remaining Steps</span>
+        {pendingSteps.length === 0 ? (
+          <small>none</small>
+        ) : (
+          <div className="run-step-pills">
+            {pendingSteps.map((step) => <small key={step}>{step}</small>)}
+          </div>
+        )}
+      </div>
+
+      <div className="run-state-path" title={run.statePath}>{run.statePath}</div>
+    </div>
   )
 }
 

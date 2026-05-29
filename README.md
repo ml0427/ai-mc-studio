@@ -34,11 +34,25 @@ npm run dev
 - 顯示 workflow 清單與 step 數量
 - 用 `ai-mc graph <workflow> --format mermaid` 顯示流程圖
 - 點選 step 查看 YAML 細節
+- 建立 wizard run，並監看 run 狀態圖
 - 編輯並儲存 workflow YAML
 - 儲存前會先用 `ai-mc validate --spec <temp-file>` 驗證
 - 儲存時會建立 `.bak.yaml` 備份
+- 未修改時不能儲存，修改後可一鍵還原目前檔案內容
 
 ## 分工
 
 - `server/index.ts`：薄後端，負責掃描專案、讀寫 YAML、包裝 `ai-mc` CLI。
 - `src/App.tsx`：Studio UI，負責專案列表、workflow graph、step inspector、YAML editor。
+
+## API 草圖
+
+- `GET /api/projects`
+- `GET /api/projects/:projectId`
+- `POST /api/projects/:projectId/validate`
+- `PUT /api/projects/:projectId/workflow`
+- `GET /api/projects/:projectId/workflows/:workflowName/graph`
+- `GET /api/projects/:projectId/runs`
+- `POST /api/projects/:projectId/runs`
+- `GET /api/projects/:projectId/runs/:runId`
+- `GET /api/projects/:projectId/runs/:runId/graph`

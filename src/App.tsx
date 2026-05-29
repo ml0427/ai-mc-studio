@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import mermaid from 'mermaid'
 import {
   AlertTriangle,
   CheckCircle2,
   FileCode2,
   FolderKanban,
   GitBranch,
+  History,
+  Play,
   RefreshCw,
+  RotateCcw,
   Save,
   Workflow,
 } from 'lucide-react'
@@ -44,6 +46,9 @@ type WorkflowSummary = {
   name: string
   description: string
   stepCount: number
+  requiredInputs: string[]
+  optionalInputs: string[]
+  gateCount: number
 }
 
 type ProjectSummary = {
@@ -53,6 +58,8 @@ type ProjectSummary = {
   workflowPath: string
   workflowCount: number
   stepCount: number
+  runCount: number
+  latestRun?: WizardRunSummary
   workflows: WorkflowSummary[]
   scannedAt: string
 }
@@ -67,14 +74,17 @@ type ToastState = {
   message: string
 }
 
-mermaid.initialize({
-  startOnLoad: false,
-  securityLevel: 'loose',
-  theme: 'base',
-  themeVariables: {
-    fontFamily: 'Aptos, Segoe UI, sans-serif',
-  },
-})
+type WizardRunSummary = {
+  runId: string
+  workflow: string
+  status: string
+  currentStep: string | null
+  completedCount: number
+  skippedCount: number
+  totalSteps: number
+  updatedAt: string
+  statePath: string
+}
 
 function App() {
   const [projects, setProjects] = useState<ProjectSummary[]>([])
@@ -85,6 +95,9 @@ function App() {
   const [selectedStepId, setSelectedStepId] = useState('')
   const [graphSource, setGraphSource] = useState('')
   const [editorValue, setEditorValue] = useState('')
+  const [runs, setRuns] = useState<WizardRunSummary[]>([])
+  const [selectedRunId, setSelectedRunId] = useState('')
+  const [runGraphSource, setRunGraphSource] = useState('')
   const [toast, setToast] = useState<ToastState | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -93,6 +106,9 @@ function App() {
     : null
   const steps = useMemo(() => workflow?.steps ?? [], [workflow])
   const selectedStep = steps.find((step) => step.id === selectedStepId) ?? steps[0]
+  const selectedWorkflowSummary = project?.workflows.find((item) => item.name === selectedWorkflow)
+  const selectedRun = runs.find((run) => run.runId === selectedRunId)
+  const isDirty = Boolean(project && editorValue !== project.rawYaml)
 
   useEffect(() => {
     void loadProjects()
@@ -110,6 +126,7 @@ function App() {
         setProject(detail)
         selectWorkflow(detail, detail.workflows[0]?.name ?? '')
         setEditorValue(detail.rawYaml)
+        await loadRuns(detail.id)
       } catch (error) {
         if (!cancelled) setToast({ tone: 'error', message: errorMessage(error) })
       } finally {
@@ -128,6 +145,11 @@ function App() {
     if (!project || !selectedWorkflow) return
     void loadGraph(project.id, selectedWorkflow)
   }, [project, selectedWorkflow])
+
+  useEffect(() => {
+    if (!project || !selectedRunId) return
+    void loadRunGraph(project.id, selectedRunId)
+  }, [project, selectedRunId])
 
   async function loadProjects() {
     setLoading(true)
@@ -155,6 +177,63 @@ function App() {
     }
   }
 
+  async function loadRuns(projectId: string, preferredRunId = '') {
+    try {
+      const data = await api<{ runs: WizardRunSummary[] }>(`/api/projects/${projectId}/runs`)
+      setRuns(data.runs)
+      if (data.runs.length === 0) setRunGraphSource('')
+      setSelectedRunId((current) => {
+        const wanted = preferredRunId || current
+        return data.runs.some((run) => run.runId === wanted)
+          ? wanted
+          : data.runs[0]?.runId || ''
+      })
+    } catch (error) {
+      setRuns([])
+      setSelectedRunId('')
+      setRunGraphSource('')
+      setToast({ tone: 'error', message: errorMessage(error) })
+    }
+  }
+
+  async function loadRunGraph(projectId: string, runId: string) {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/runs/${encodeURIComponent(runId)}/graph`)
+      if (!response.ok) throw new Error(await response.text())
+      setRunGraphSource(await response.text())
+    } catch (error) {
+      setRunGraphSource('')
+      setToast({ tone: 'error', message: errorMessage(error) })
+    }
+  }
+
+  async function startRun() {
+    if (!project || !selectedWorkflowSummary) return
+    const inputs: Record<string, string> = {}
+
+    for (const inputName of selectedWorkflowSummary.requiredInputs) {
+      const value = window.prompt(`輸入 ${inputName}`)
+      if (value === null) return
+      inputs[inputName] = value
+    }
+
+    try {
+      const result = await api<{ ok: boolean; runId?: string; runs: WizardRunSummary[] }>(
+        `/api/projects/${project.id}/runs`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ workflow: selectedWorkflow, inputs }),
+        },
+      )
+      setRuns(result.runs)
+      setSelectedRunId(result.runId ?? result.runs[0]?.runId ?? '')
+      setToast({ tone: 'ok', message: `已建立 run：${result.runId ?? selectedWorkflow}` })
+    } catch (error) {
+      setToast({ tone: 'error', message: errorMessage(error) })
+    }
+  }
+
   async function validateProject() {
     if (!project) return
     try {
@@ -169,6 +248,12 @@ function App() {
 
   async function saveWorkflow() {
     if (!project) return
+    if (!isDirty) {
+      setToast({ tone: 'info', message: 'workflow.yaml 沒有變更' })
+      return
+    }
+    if (!window.confirm(`確定要儲存 ${project.name} 的 workflow.yaml？會先建立備份。`)) return
+
     try {
       const result = await api<{ ok: boolean; backupPath: string; project: ProjectDetail }>(
         `/api/projects/${project.id}/workflow`,
@@ -183,6 +268,7 @@ function App() {
       selectWorkflow(result.project, selectedWorkflow)
       setToast({ tone: 'ok', message: `已儲存，備份在 ${result.backupPath}` })
       await loadProjects()
+      await loadRuns(result.project.id, selectedRunId)
     } catch (error) {
       setToast({ tone: 'error', message: errorMessage(error) })
     }
@@ -226,7 +312,7 @@ function App() {
               <FolderKanban size={17} />
               <span>
                 <strong>{item.name}</strong>
-                <small>{item.workflowCount} workflows · {item.stepCount} steps</small>
+                <small>{item.workflowCount} workflows · {item.stepCount} steps · {item.runCount} runs</small>
               </span>
             </button>
           ))}
@@ -239,15 +325,27 @@ function App() {
             <p className="eyebrow">Project Workflow Console</p>
             <h1>{project?.name ?? '選擇一個專案'}</h1>
             <div className="subtle-path">{project?.rootPath ?? '正在等待掃描結果'}</div>
+            {project && (
+              <div className="project-metrics">
+                <span>{project.workflowCount} workflows</span>
+                <span>{project.stepCount} steps</span>
+                <span>{project.runCount} runs</span>
+                <span>{project.latestRun?.status ?? 'no runs'}</span>
+              </div>
+            )}
           </div>
           <div className="header-actions">
             <button type="button" onClick={validateProject} disabled={!project}>
               <CheckCircle2 size={16} />
               驗證
             </button>
-            <button type="button" className="primary" onClick={saveWorkflow} disabled={!project}>
+            <button type="button" onClick={startRun} disabled={!project || !selectedWorkflow}>
+              <Play size={16} />
+              建立 Run
+            </button>
+            <button type="button" className="primary" onClick={saveWorkflow} disabled={!project || !isDirty}>
               <Save size={16} />
-              儲存 YAML
+              儲存 YAML{isDirty ? ' *' : ''}
             </button>
           </div>
         </header>
@@ -269,11 +367,11 @@ function App() {
               <button
                 className={`workflow-row ${item.name === selectedWorkflow ? 'active' : ''}`}
                 key={item.name}
-              type="button"
+                type="button"
                 onClick={() => project && selectWorkflow(project, item.name)}
               >
                 <strong>{item.name}</strong>
-                <span>{item.stepCount} steps</span>
+                <span>{item.stepCount} steps · {item.gateCount} gates</span>
               </button>
             ))}
           </nav>
@@ -304,6 +402,15 @@ function App() {
                 </button>
               ))}
             </div>
+            {selectedStep && (
+              <div className="step-facts">
+                <span>{selectedStep.type}</span>
+                {selectedStep.when && <span>when</span>}
+                {selectedStep.command_ref && <span>{selectedStep.command_ref}</span>}
+                {selectedStep.output && <span>out: {selectedStep.output}</span>}
+                {selectedStep.blocks_downstream && <span>blocks</span>}
+              </div>
+            )}
             <pre className="yaml-view">
               {selectedStep ? YAML.stringify(selectedStep) : '尚未選擇 step'}
             </pre>
@@ -314,12 +421,48 @@ function App() {
           <div className="panel-title">
             <FileCode2 size={16} />
             workflow.yaml
+            {isDirty && <span className="title-note dirty">unsaved</span>}
+            <button className="icon-action" type="button" onClick={() => project && setEditorValue(project.rawYaml)} disabled={!isDirty}>
+              <RotateCcw size={14} />
+              還原
+            </button>
           </div>
           <textarea
             spellCheck={false}
             value={editorValue}
             onChange={(event) => setEditorValue(event.target.value)}
           />
+        </section>
+
+        <section className="run-panel">
+          <div className="run-list">
+            <div className="panel-title">
+              <History size={16} />
+              Wizard Runs
+            </div>
+            {runs.length === 0 ? (
+              <div className="mini-empty">目前沒有 run，按「建立 Run」開始。</div>
+            ) : runs.map((run) => (
+              <button
+                className={`run-row ${run.runId === selectedRunId ? 'active' : ''}`}
+                key={run.runId}
+                type="button"
+                onClick={() => setSelectedRunId(run.runId)}
+              >
+                <strong>{run.workflow}</strong>
+                <span>{run.currentStep ?? run.status}</span>
+                <small>{run.completedCount + run.skippedCount}/{run.totalSteps} · {formatDate(run.updatedAt)}</small>
+              </button>
+            ))}
+          </div>
+          <div className="run-graph">
+            <div className="panel-title">
+              <Workflow size={16} />
+              Run Status
+              {selectedRun && <span className="title-note">{selectedRun.runId}</span>}
+            </div>
+            {runGraphSource ? <MermaidChart chart={runGraphSource} /> : <EmptyState loading={loading} />}
+          </div>
         </section>
       </section>
     </main>
@@ -334,14 +477,31 @@ function MermaidChart({ chart }: { chart: string }) {
     let cancelled = false
     const id = `mermaid-${crypto.randomUUID()}`
 
-    mermaid.render(id, chart)
-      .then(({ svg }) => {
-        if (!cancelled && elementRef.current) {
-          elementRef.current.innerHTML = svg
-          setError('')
-        }
+    async function renderChart() {
+      const { default: mermaid } = await import('mermaid')
+      mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: 'loose',
+        theme: 'base',
+        themeVariables: {
+          fontFamily: 'Aptos, Segoe UI, sans-serif',
+        },
+      })
+      const { svg } = await mermaid.render(id, chart)
+      if (!cancelled && elementRef.current) {
+        elementRef.current.innerHTML = svg
+        setError('')
+      }
+    }
+
+    renderChart()
+      .then(() => {
+        // Rendering side effects are handled in renderChart.
       })
       .catch((reason) => {
+        if (!cancelled && elementRef.current) {
+          elementRef.current.innerHTML = ''
+        }
         if (!cancelled) setError(errorMessage(reason))
       })
 
@@ -379,6 +539,18 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+function formatDate(value: string): string {
+  if (!value) return 'unknown'
+  const date = new Date(value)
+  if (Number.isNaN(date.valueOf())) return value
+  return date.toLocaleString('zh-TW', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 export default App

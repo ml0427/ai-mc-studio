@@ -18,8 +18,20 @@ type WorkflowSpec = {
 
 type WorkflowDefinition = {
   description?: string
+  inputs?: WorkflowInputs
   steps?: WorkflowStep[]
   gates?: unknown
+  evidence?: unknown
+}
+
+type WorkflowInputs = {
+  required?: WorkflowInput[]
+  optional?: WorkflowInput[]
+}
+
+type WorkflowInput = {
+  name: string
+  example?: unknown
 }
 
 type WorkflowStep = {
@@ -39,6 +51,8 @@ type ProjectRecord = {
   workflowPath: string
   workflowCount: number
   stepCount: number
+  runCount: number
+  latestRun?: WizardRunSummary
   workflows: WorkflowSummary[]
   scannedAt: string
 }
@@ -47,6 +61,21 @@ type WorkflowSummary = {
   name: string
   description: string
   stepCount: number
+  requiredInputs: string[]
+  optionalInputs: string[]
+  gateCount: number
+}
+
+type WizardRunSummary = {
+  runId: string
+  workflow: string
+  status: string
+  currentStep: string | null
+  completedCount: number
+  skippedCount: number
+  totalSteps: number
+  updatedAt: string
+  statePath: string
 }
 
 const app = express()
@@ -89,6 +118,81 @@ app.get('/api/projects/:projectId/workflows/:workflowName/graph', async (request
     response.type('text/plain').send(graph)
   } catch (error) {
     next(error)
+  }
+})
+
+app.get('/api/projects/:projectId/adapters', async (request, response, next) => {
+  try {
+    const project = await resolveProject(request.params.projectId)
+    const output = await runAiMc(['adapters'], project.rootPath)
+    response.json({ output: JSON.parse(output) })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.get('/api/projects/:projectId/runners', async (request, response, next) => {
+  try {
+    const project = await resolveProject(request.params.projectId)
+    const output = await runAiMc(['runners'], project.rootPath)
+    response.type('text/plain').send(output)
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.get('/api/projects/:projectId/runs', async (request, response, next) => {
+  try {
+    const project = await resolveProject(request.params.projectId)
+    response.json({ runs: await readRuns(project.rootPath) })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.get('/api/projects/:projectId/runs/:runId', async (request, response, next) => {
+  try {
+    const project = await resolveProject(request.params.projectId)
+    response.json(await readRunState(project.rootPath, request.params.runId))
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.get('/api/projects/:projectId/runs/:runId/graph', async (request, response, next) => {
+  try {
+    const project = await resolveProject(request.params.projectId)
+    const graph = await runAiMc(['wizard', 'status', '--run', request.params.runId, '--format', 'mermaid'], project.rootPath)
+    response.type('text/plain').send(graph)
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.post('/api/projects/:projectId/runs', async (request, response) => {
+  try {
+    const project = await resolveProject(request.params.projectId)
+    const workflow = String(request.body?.workflow ?? '')
+    const inputs = request.body?.inputs ?? {}
+    if (!workflow) {
+      response.status(400).json({ ok: false, message: 'workflow is required' })
+      return
+    }
+
+    const args = ['wizard', 'start', workflow]
+    for (const [key, value] of Object.entries(inputs)) {
+      args.push('-i', `${key}=${String(value)}`)
+    }
+    const output = await runAiMc(args, project.rootPath)
+    const runId = output.match(/run id:\s*(.+)$/m)?.[1]?.trim()
+    response.json({
+      ok: true,
+      output,
+      runId,
+      runs: await readRuns(project.rootPath),
+    })
+  } catch (error) {
+    response.status(400).json({ ok: false, message: errorMessage(error) })
   }
 })
 
@@ -152,6 +256,7 @@ async function scanProjects(): Promise<ProjectRecord[]> {
       const rawYaml = await readFile(workflowPath, 'utf8')
       const spec = YAML.parse(rawYaml) as WorkflowSpec
       const workflows = workflowSummaries(spec)
+      const runs = await readRuns(rootPath)
       projects.push({
         id: encodeProjectId(rootPath),
         name: entry.name,
@@ -159,6 +264,8 @@ async function scanProjects(): Promise<ProjectRecord[]> {
         workflowPath,
         workflowCount: workflows.length,
         stepCount: workflows.reduce((total, workflow) => total + workflow.stepCount, 0),
+        runCount: runs.length,
+        latestRun: runs[0],
         workflows,
         scannedAt,
       })
@@ -170,6 +277,7 @@ async function scanProjects(): Promise<ProjectRecord[]> {
         workflowPath,
         workflowCount: 0,
         stepCount: 0,
+        runCount: 0,
         workflows: [],
         scannedAt,
       })
@@ -202,7 +310,62 @@ function workflowSummaries(spec: WorkflowSpec): WorkflowSummary[] {
     name,
     description: workflow.description ?? '',
     stepCount: workflow.steps?.length ?? 0,
+    requiredInputs: workflow.inputs?.required?.map((input) => input.name) ?? [],
+    optionalInputs: workflow.inputs?.optional?.map((input) => input.name) ?? [],
+    gateCount: [
+      ...normalizeList((workflow.gates as { fail_if?: unknown })?.fail_if),
+      ...normalizeList((workflow.gates as { warn_if?: unknown })?.warn_if),
+    ].length,
   }))
+}
+
+async function readRuns(projectRoot: string): Promise<WizardRunSummary[]> {
+  const runsDir = path.join(projectRoot, '.workflow', '.workflow-runs')
+  if (!existsSync(runsDir)) return []
+
+  const entries = await readdir(runsDir, { withFileTypes: true })
+  const runs: WizardRunSummary[] = []
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    try {
+      const state = await readRunState(projectRoot, entry.name)
+      runs.push(summarizeRunState(state, path.join(runsDir, entry.name, 'wizard-state.json')))
+    } catch {
+      // Ignore incomplete run directories.
+    }
+  }
+
+  return runs.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+}
+
+async function readRunState(projectRoot: string, runId: string): Promise<Record<string, unknown>> {
+  if (runId.includes('/') || runId.includes('\\') || runId.includes('..')) {
+    throw new Error(`Invalid run id: ${runId}`)
+  }
+  const statePath = path.join(projectRoot, '.workflow', '.workflow-runs', runId, 'wizard-state.json')
+  const raw = await readFile(statePath, 'utf8')
+  return JSON.parse(raw) as Record<string, unknown>
+}
+
+function summarizeRunState(state: Record<string, unknown>, statePath: string): WizardRunSummary {
+  const completed = Array.isArray(state.completed_steps) ? state.completed_steps : []
+  const skipped = Array.isArray(state.skipped_steps) ? state.skipped_steps : []
+  const steps = Array.isArray(state.steps) ? state.steps : []
+  return {
+    runId: String(state.run_id ?? ''),
+    workflow: String(state.workflow ?? ''),
+    status: String(state.status ?? ''),
+    currentStep: state.current_step ? String(state.current_step) : null,
+    completedCount: completed.length,
+    skippedCount: skipped.length,
+    totalSteps: steps.length,
+    updatedAt: String(state.updated_at ?? state.created_at ?? ''),
+    statePath,
+  }
+}
+
+function normalizeList(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : []
 }
 
 function encodeProjectId(rootPath: string): string {

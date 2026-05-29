@@ -199,6 +199,22 @@ h1 {
   max-width: 760px;
 }
 
+.project-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.project-metrics span {
+  border: 1px solid #cbd5e1;
+  background: #fbfbf8;
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: #374151;
+  font-size: 12px;
+}
+
 .header-actions {
   display: flex;
   gap: 8px;
@@ -252,7 +268,8 @@ h1 {
 .workflow-panel,
 .graph-panel,
 .inspector-panel,
-.editor-panel {
+.editor-panel,
+.run-panel {
   min-width: 0;
   min-height: 0;
   background: #fbfbf8;
@@ -280,6 +297,41 @@ h1 {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin-bottom: 10px;
+}
+
+.title-note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #6b7280;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.title-note.dirty {
+  color: #9a5b00;
+  background: #fef3c7;
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+
+.icon-action {
+  margin-left: auto;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #172033;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 7px;
+  cursor: pointer;
+}
+
+.icon-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .workflow-row {
@@ -328,7 +380,7 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 260px;
+  max-height: 220px;
   overflow: auto;
   margin-bottom: 12px;
 }
@@ -359,6 +411,26 @@ h1 {
 
 .step-row small {
   color: #5b6470;
+}
+
+.step-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.step-facts span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 999px;
+  background: #eef0ea;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  padding: 3px 7px;
+  font-size: 12px;
 }
 
 .yaml-view {
@@ -398,6 +470,83 @@ h1 {
   font: 12px/1.55 Consolas, "Cascadia Code", monospace;
 }
 
+.run-panel {
+  flex: 0 0 320px;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.run-list,
+.run-graph {
+  min-width: 0;
+  min-height: 0;
+}
+
+.run-list {
+  overflow: auto;
+}
+
+.run-graph {
+  overflow: auto;
+  border-left: 1px solid #e5e7eb;
+  padding-left: 12px;
+}
+
+.run-row {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: #eef0ea;
+  color: #172033;
+  text-align: left;
+  padding: 9px;
+  margin-bottom: 7px;
+  cursor: pointer;
+}
+
+.run-row:hover,
+.run-row.active {
+  border-color: #d7ff64;
+}
+
+.run-row.active {
+  background: #1b1f24;
+  color: #f8fafc;
+}
+
+.run-row strong,
+.run-row span,
+.run-row small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-row span,
+.run-row small {
+  margin-top: 3px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.run-row.active span,
+.run-row.active small {
+  color: #b7c2cf;
+}
+
+.mini-empty {
+  color: #6b7280;
+  background: #eef0ea;
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 13px;
+}
+
 .empty-state {
   min-height: 320px;
   display: grid;
@@ -424,5 +573,16 @@ h1 {
 
   .studio-grid {
     grid-template-columns: 1fr;
+  }
+
+  .run-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .run-graph {
+    border-left: none;
+    border-top: 1px solid #e5e7eb;
+    padding-left: 0;
+    padding-top: 12px;
   }
 }

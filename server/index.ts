@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
+import { createHash, randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import express from 'express'
 import YAML from 'yaml'
@@ -9,6 +10,7 @@ const PORT = Number(process.env.AI_MC_STUDIO_PORT ?? 4317)
 const PROJECTS_ROOT = path.resolve(process.env.AI_MC_PROJECTS_ROOT ?? path.join(process.cwd(), '..'))
 const AI_MC_CLI = path.resolve(process.env.AI_MC_CLI ?? path.join(PROJECTS_ROOT, 'ai-mc', 'bin', 'ai-mc.js'))
 const SCAN_DEPTH = Number(process.env.AI_MC_SCAN_DEPTH ?? 2)
+const AI_MC_TIMEOUT_MS = Number(process.env.AI_MC_TIMEOUT_MS ?? 30000)
 const IGNORED_DIRS = new Set([
   '.git',
   '.workflow-runs',
@@ -64,6 +66,12 @@ type ProjectRecord = {
   latestRun?: WizardRunSummary
   workflows: WorkflowSummary[]
   scannedAt: string
+}
+
+type ProjectDetail = ProjectRecord & {
+  spec: WorkflowSpec
+  rawYaml: string
+  rawHash: string
 }
 
 type WorkflowSummary = {
@@ -236,6 +244,7 @@ app.put('/api/projects/:projectId/workflow', async (request, response) => {
   try {
     const project = await resolveProject(request.params.projectId)
     const content = String(request.body?.content ?? '')
+    const expectedHash = String(request.body?.expectedHash ?? '')
     if (!content.trim()) {
       response.status(400).json({ ok: false, message: 'workflow content is empty' })
       return
@@ -243,10 +252,20 @@ app.put('/api/projects/:projectId/workflow', async (request, response) => {
 
     await validateWorkflowContent(project, content)
 
+    const workflowDir = path.dirname(project.workflowPath)
     const backupPath = path.join(workflowDir, `workflow.${new Date().toISOString().replace(/[:.]/g, '-')}.bak.yaml`)
+    const tempPath = path.join(workflowDir, `workflow.${randomUUID()}.tmp.yaml`)
     const previous = await readFile(project.workflowPath, 'utf8')
+    if (expectedHash && hashText(previous) !== expectedHash) {
+      response.status(409).json({
+        ok: false,
+        message: 'workflow.yaml 已在 Studio 外被修改，請重新掃描後再儲存。',
+      })
+      return
+    }
     await writeFile(backupPath, previous, 'utf8')
-    await writeFile(project.workflowPath, content, 'utf8')
+    await writeFile(tempPath, content, 'utf8')
+    await rename(tempPath, project.workflowPath)
 
     response.json({
       ok: true,
@@ -305,7 +324,7 @@ async function scanProjects(): Promise<ProjectRecord[]> {
 async function validateWorkflowContent(project: ProjectRecord, content: string): Promise<string> {
   YAML.parse(content)
   const workflowDir = path.dirname(project.workflowPath)
-  const checkPath = path.join(workflowDir, 'workflow.studio-check.yaml')
+  const checkPath = path.join(workflowDir, `workflow.studio-check.${randomUUID()}.yaml`)
   await writeFile(checkPath, content, 'utf8')
   try {
     return await runAiMc(['validate', '--spec', checkPath], project.rootPath)
@@ -350,13 +369,14 @@ async function resolveProject(projectId: string): Promise<ProjectRecord> {
   return project
 }
 
-async function readProjectDetail(project: ProjectRecord) {
+async function readProjectDetail(project: ProjectRecord): Promise<ProjectDetail> {
   const rawYaml = await readFile(project.workflowPath, 'utf8')
   const spec = YAML.parse(rawYaml) as WorkflowSpec
   return {
     ...project,
     spec,
     rawYaml,
+    rawHash: hashText(rawYaml),
     workflows: workflowSummaries(spec),
   }
 }
@@ -428,9 +448,17 @@ function encodeProjectId(rootPath: string): string {
   return Buffer.from(rootPath).toString('base64url')
 }
 
+function hashText(value: string): string {
+  return createHash('sha256').update(value).digest('hex')
+}
+
 function runAiMc(args: string[], cwd: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile('node', [AI_MC_CLI, ...args], { cwd, maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
+    execFile('node', [AI_MC_CLI, ...args], {
+      cwd,
+      maxBuffer: 20 * 1024 * 1024,
+      timeout: AI_MC_TIMEOUT_MS,
+    }, (error, stdout, stderr) => {
       if (error) {
         reject(new Error([stderr, stdout, error.message].filter(Boolean).join('\n')))
         return
@@ -450,7 +478,7 @@ app.use((error: unknown, _request: express.Request, response: express.Response, 
 })
 
 await mkdir(PROJECTS_ROOT, { recursive: true })
-app.listen(PORT, () => {
-  console.log(`AI-MC Studio API listening on http://localhost:${PORT}`)
+app.listen(PORT, '127.0.0.1', () => {
+  console.log(`AI-MC Studio API listening on http://127.0.0.1:${PORT}`)
   console.log(`Scanning projects under ${PROJECTS_ROOT}`)
 })

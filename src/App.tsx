@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -67,6 +67,7 @@ type ProjectSummary = {
 type ProjectDetail = ProjectSummary & {
   spec: WorkflowSpec
   rawYaml: string
+  rawHash: string
 }
 
 type ToastState = {
@@ -99,6 +100,7 @@ function App() {
   const [runs, setRuns] = useState<WizardRunSummary[]>([])
   const [selectedRunId, setSelectedRunId] = useState('')
   const [runGraphSource, setRunGraphSource] = useState('')
+  const [runInputValues, setRunInputValues] = useState<Record<string, string>>({})
   const [toast, setToast] = useState<ToastState | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -114,6 +116,40 @@ function App() {
   const displayedWorkflowGraph = isDirty && workflow && selectedWorkflow
     ? buildClientMermaid(selectedWorkflow, workflow)
     : graphSource
+
+  const loadRunGraph = useCallback(async (projectId: string, runId: string) => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/runs/${encodeURIComponent(runId)}/graph`)
+      if (!response.ok) throw new Error(await response.text())
+      setRunGraphSource(await response.text())
+    } catch (error) {
+      setRunGraphSource('')
+      setToast({ tone: 'error', message: errorMessage(error) })
+    }
+  }, [])
+
+  const loadRuns = useCallback(async (
+    projectId: string,
+    preferredRunId = '',
+    options: { quiet?: boolean } = {},
+  ) => {
+    try {
+      const data = await api<{ runs: WizardRunSummary[] }>(`/api/projects/${projectId}/runs`)
+      const wanted = preferredRunId
+      const nextRunId = data.runs.some((run) => run.runId === wanted)
+        ? wanted
+        : data.runs[0]?.runId || ''
+      setRuns(data.runs)
+      if (data.runs.length === 0) setRunGraphSource('')
+      setSelectedRunId(nextRunId)
+      if (nextRunId) await loadRunGraph(projectId, nextRunId)
+    } catch (error) {
+      setRuns([])
+      setSelectedRunId('')
+      setRunGraphSource('')
+      if (!options.quiet) setToast({ tone: 'error', message: errorMessage(error) })
+    }
+  }, [loadRunGraph])
 
   useEffect(() => {
     void loadProjects()
@@ -144,7 +180,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [selectedProjectId])
+  }, [loadRuns, selectedProjectId])
 
   useEffect(() => {
     if (!project || !selectedWorkflow) return
@@ -152,9 +188,23 @@ function App() {
   }, [project, selectedWorkflow])
 
   useEffect(() => {
-    if (!project || !selectedRunId) return
-    void loadRunGraph(project.id, selectedRunId)
-  }, [project, selectedRunId])
+    if (!project) return
+    const intervalId = window.setInterval(() => {
+      void loadRuns(project.id, selectedRunId, { quiet: true })
+    }, 5000)
+    return () => window.clearInterval(intervalId)
+  }, [loadRuns, project, selectedRunId])
+
+  useEffect(() => {
+    function confirmLeave(event: BeforeUnloadEvent) {
+      if (!isDirty) return
+      event.preventDefault()
+      event.returnValue = ''
+    }
+
+    window.addEventListener('beforeunload', confirmLeave)
+    return () => window.removeEventListener('beforeunload', confirmLeave)
+  }, [isDirty])
 
   async function loadProjects() {
     setLoading(true)
@@ -183,44 +233,24 @@ function App() {
     }
   }
 
-  async function loadRuns(projectId: string, preferredRunId = '') {
-    try {
-      const data = await api<{ runs: WizardRunSummary[] }>(`/api/projects/${projectId}/runs`)
-      setRuns(data.runs)
-      if (data.runs.length === 0) setRunGraphSource('')
-      setSelectedRunId((current) => {
-        const wanted = preferredRunId || current
-        return data.runs.some((run) => run.runId === wanted)
-          ? wanted
-          : data.runs[0]?.runId || ''
-      })
-    } catch (error) {
-      setRuns([])
-      setSelectedRunId('')
-      setRunGraphSource('')
-      setToast({ tone: 'error', message: errorMessage(error) })
-    }
-  }
-
-  async function loadRunGraph(projectId: string, runId: string) {
-    try {
-      const response = await fetch(`/api/projects/${projectId}/runs/${encodeURIComponent(runId)}/graph`)
-      if (!response.ok) throw new Error(await response.text())
-      setRunGraphSource(await response.text())
-    } catch (error) {
-      setRunGraphSource('')
-      setToast({ tone: 'error', message: errorMessage(error) })
-    }
-  }
-
   async function startRun() {
     if (!project || !selectedWorkflowSummary) return
     const inputs: Record<string, string> = {}
+    const missingInputs = selectedWorkflowSummary.requiredInputs.filter(
+      (inputName) => !runInputValues[inputName]?.trim(),
+    )
 
-    for (const inputName of selectedWorkflowSummary.requiredInputs) {
-      const value = window.prompt(`輸入 ${inputName}`)
-      if (value === null) return
-      inputs[inputName] = value
+    if (missingInputs.length > 0) {
+      setToast({ tone: 'error', message: `缺少必要輸入：${missingInputs.join(', ')}` })
+      return
+    }
+
+    for (const inputName of [
+      ...selectedWorkflowSummary.requiredInputs,
+      ...selectedWorkflowSummary.optionalInputs,
+    ]) {
+      const value = runInputValues[inputName]?.trim()
+      if (value) inputs[inputName] = value
     }
 
     try {
@@ -235,6 +265,7 @@ function App() {
       setRuns(result.runs)
       setSelectedRunId(result.runId ?? result.runs[0]?.runId ?? '')
       setToast({ tone: 'ok', message: `已建立 run：${result.runId ?? selectedWorkflow}` })
+      await loadRuns(project.id, result.runId)
     } catch (error) {
       setToast({ tone: 'error', message: errorMessage(error) })
     }
@@ -272,7 +303,7 @@ function App() {
         {
           method: 'PUT',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ content: editorValue }),
+          body: JSON.stringify({ content: editorValue, expectedHash: project.rawHash }),
         },
       )
       setProject(result.project)
@@ -290,8 +321,28 @@ function App() {
     const nextWorkflow = targetProject.spec.workflows?.[workflowName]
       ? workflowName
       : targetProject.workflows[0]?.name ?? ''
+    const nextSummary = targetProject.workflows.find((item) => item.name === nextWorkflow)
     setSelectedWorkflow(nextWorkflow)
     setSelectedStepId(targetProject.spec.workflows?.[nextWorkflow]?.steps?.[0]?.id ?? '')
+    setRunInputValues(seedRunInputs(nextSummary))
+  }
+
+  function selectProject(projectId: string) {
+    if (projectId === selectedProjectId) return
+    if (isDirty && !window.confirm('目前 workflow.yaml 尚未儲存，確定要切換專案？')) return
+    setSelectedProjectId(projectId)
+  }
+
+  function updateRunInput(inputName: string, value: string) {
+    setRunInputValues((current) => ({
+      ...current,
+      [inputName]: value,
+    }))
+  }
+
+  function selectRun(runId: string) {
+    setSelectedRunId(runId)
+    if (project) void loadRunGraph(project.id, runId)
   }
 
   function updateSelectedStep(field: 'type' | 'when' | 'output', value: string) {
@@ -338,7 +389,7 @@ function App() {
               className={`project-row ${item.id === selectedProjectId ? 'active' : ''}`}
               key={item.id}
               type="button"
-              onClick={() => setSelectedProjectId(item.id)}
+              onClick={() => selectProject(item.id)}
             >
               <FolderKanban size={17} />
               <span>
@@ -505,7 +556,37 @@ function App() {
             <div className="panel-title">
               <History size={16} />
               Wizard Runs
+              <button
+                className="icon-action"
+                type="button"
+                onClick={() => project && loadRuns(project.id, selectedRunId)}
+                disabled={!project}
+              >
+                <RefreshCw size={14} />
+                刷新
+              </button>
             </div>
+            {selectedWorkflowSummary && (
+              <div className="run-inputs">
+                <div className="run-input-title">{selectedWorkflow} inputs</div>
+                {[
+                  ...selectedWorkflowSummary.requiredInputs.map((name) => ({ name, required: true })),
+                  ...selectedWorkflowSummary.optionalInputs.map((name) => ({ name, required: false })),
+                ].map((input) => (
+                  <label key={input.name}>
+                    <span>{input.name}{input.required ? ' *' : ''}</span>
+                    <input
+                      value={runInputValues[input.name] ?? ''}
+                      onChange={(event) => updateRunInput(input.name, event.target.value)}
+                      placeholder={input.required ? 'required' : 'optional'}
+                    />
+                  </label>
+                ))}
+                {selectedWorkflowSummary.requiredInputs.length + selectedWorkflowSummary.optionalInputs.length === 0 && (
+                  <div className="mini-empty">這個 workflow 沒有 inputs，可以直接建立 Run。</div>
+                )}
+              </div>
+            )}
             {runs.length === 0 ? (
               <div className="mini-empty">目前沒有 run，按「建立 Run」開始。</div>
             ) : runs.map((run) => (
@@ -513,7 +594,7 @@ function App() {
                 className={`run-row ${run.runId === selectedRunId ? 'active' : ''}`}
                 key={run.runId}
                 type="button"
-                onClick={() => setSelectedRunId(run.runId)}
+                onClick={() => selectRun(run.runId)}
               >
                 <strong>{run.workflow}</strong>
                 <span>{run.currentStep ?? run.status}</span>
@@ -547,7 +628,7 @@ function MermaidChart({ chart }: { chart: string }) {
       const { default: mermaid } = await import('mermaid')
       mermaid.initialize({
         startOnLoad: false,
-        securityLevel: 'loose',
+        securityLevel: 'strict',
         theme: 'base',
         themeVariables: {
           fontFamily: 'Aptos, Segoe UI, sans-serif',
@@ -617,6 +698,20 @@ function formatDate(value: string): string {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function seedRunInputs(summary?: WorkflowSummary): Record<string, string> {
+  const next: Record<string, string> = {}
+  if (!summary) return next
+
+  for (const inputName of [
+    ...summary.requiredInputs,
+    ...summary.optionalInputs,
+  ]) {
+    next[inputName] = ''
+  }
+
+  return next
 }
 
 function parseWorkflowSpec(value: string, fallback?: WorkflowSpec | null): { spec: WorkflowSpec | null; error: string } {

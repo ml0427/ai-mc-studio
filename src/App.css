@@ -260,7 +260,7 @@ h1 {
 .studio-grid {
   min-height: 0;
   display: grid;
-  grid-template-columns: 220px minmax(360px, 1fr) 340px;
+  grid-template-columns: 220px minmax(0, 1fr) minmax(300px, 340px);
   gap: 12px;
   flex: 1 1 auto;
 }
@@ -538,6 +538,53 @@ h1 {
   cursor: pointer;
 }
 
+.run-inputs {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 7px;
+  background: #f7f7f2;
+  padding: 10px;
+}
+
+.run-input-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #424a55;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.run-inputs label {
+  display: grid;
+  gap: 4px;
+}
+
+.run-inputs label span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #59616d;
+  font-size: 12px;
+}
+
+.run-inputs input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #172033;
+  padding: 7px 8px;
+  font: inherit;
+  font-size: 13px;
+}
+
 .run-row:hover,
 .run-row.active {
   border-color: #d7ff64;
@@ -593,7 +640,7 @@ h1 {
   display: block;
 }
 
-@media (max-width: 1180px) {
+@media (max-width: 1240px) {
   .studio-shell {
     grid-template-columns: 1fr;
   }

@@ -501,6 +501,39 @@ h1 {
   font: 12px/1.55 Consolas, "Cascadia Code", monospace;
 }
 
+.validation-result {
+  margin-top: 10px;
+  border: 1px solid;
+  border-radius: 7px;
+  padding: 9px;
+  max-height: 140px;
+  overflow: auto;
+}
+
+.validation-result.ok {
+  background: #f3f9e7;
+  border-color: #bddf51;
+}
+
+.validation-result.error {
+  background: #fff1f2;
+  border-color: #fb7185;
+}
+
+.validation-result strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #172033;
+  font-size: 13px;
+}
+
+.validation-result pre {
+  margin: 0;
+  white-space: pre-wrap;
+  color: #374151;
+  font: 12px/1.5 Consolas, "Cascadia Code", monospace;
+}
+
 .run-panel {
   flex: 0 0 320px;
   padding: 12px;

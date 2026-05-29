@@ -75,6 +75,12 @@ type ToastState = {
   message: string
 }
 
+type ValidationResult = {
+  tone: 'ok' | 'error'
+  title: string
+  output: string
+}
+
 type WizardRunSummary = {
   runId: string
   workflow: string
@@ -101,6 +107,7 @@ function App() {
   const [selectedRunId, setSelectedRunId] = useState('')
   const [runGraphSource, setRunGraphSource] = useState('')
   const [runInputValues, setRunInputValues] = useState<Record<string, string>>({})
+  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null)
   const [toast, setToast] = useState<ToastState | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -283,9 +290,20 @@ function App() {
         : await api<{ ok: boolean; output: string }>(`/api/projects/${project.id}/validate`, {
           method: 'POST',
         })
-      setToast({ tone: 'ok', message: `${isDirty ? '草稿' : '檔案'}驗證通過：${result.output.trim()}` })
+      setValidationResult({
+        tone: 'ok',
+        title: `${isDirty ? '草稿' : '檔案'}驗證通過`,
+        output: result.output.trim(),
+      })
+      setToast({ tone: 'ok', message: `${isDirty ? '草稿' : '檔案'}驗證通過` })
     } catch (error) {
-      setToast({ tone: 'error', message: errorMessage(error) })
+      const message = errorMessage(error)
+      setValidationResult({
+        tone: 'error',
+        title: `${isDirty ? '草稿' : '檔案'}驗證失敗`,
+        output: message,
+      })
+      setToast({ tone: 'error', message })
     }
   }
 
@@ -549,6 +567,12 @@ function App() {
             value={editorValue}
             onChange={(event) => setEditorValue(event.target.value)}
           />
+          {validationResult && (
+            <div className={`validation-result ${validationResult.tone}`}>
+              <strong>{validationResult.title}</strong>
+              <pre>{validationResult.output || 'OK'}</pre>
+            </div>
+          )}
         </section>
 
         <section className="run-panel">

@@ -8,6 +8,15 @@ import YAML from 'yaml'
 const PORT = Number(process.env.AI_MC_STUDIO_PORT ?? 4317)
 const PROJECTS_ROOT = path.resolve(process.env.AI_MC_PROJECTS_ROOT ?? path.join(process.cwd(), '..'))
 const AI_MC_CLI = path.resolve(process.env.AI_MC_CLI ?? path.join(PROJECTS_ROOT, 'ai-mc', 'bin', 'ai-mc.js'))
+const SCAN_DEPTH = Number(process.env.AI_MC_SCAN_DEPTH ?? 2)
+const IGNORED_DIRS = new Set([
+  '.git',
+  '.workflow-runs',
+  'dist',
+  'dist-ssr',
+  'node_modules',
+  'target',
+])
 
 type WorkflowSpec = {
   schema_version?: string
@@ -85,6 +94,7 @@ app.get('/api/health', (_request, response) => {
   response.json({
     ok: true,
     projectsRoot: PROJECTS_ROOT,
+    scanDepth: SCAN_DEPTH,
     aiMcCli: AI_MC_CLI,
     aiMcAvailable: existsSync(AI_MC_CLI),
   })
@@ -94,6 +104,7 @@ app.get('/api/projects', async (_request, response, next) => {
   try {
     response.json({
       projectsRoot: PROJECTS_ROOT,
+      scanDepth: SCAN_DEPTH,
       projects: await scanProjects(),
     })
   } catch (error) {
@@ -241,16 +252,13 @@ app.put('/api/projects/:projectId/workflow', async (request, response) => {
 })
 
 async function scanProjects(): Promise<ProjectRecord[]> {
-  const entries = await readdir(PROJECTS_ROOT, { withFileTypes: true })
   const projects: ProjectRecord[] = []
   const scannedAt = new Date().toISOString()
+  const projectRoots = await findWorkflowProjectRoots(PROJECTS_ROOT, SCAN_DEPTH)
 
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue
-    if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue
-    const rootPath = path.join(PROJECTS_ROOT, entry.name)
+  for (const rootPath of projectRoots) {
     const workflowPath = path.join(rootPath, '.workflow', 'workflow.yaml')
-    if (!existsSync(workflowPath)) continue
+    const name = path.basename(rootPath)
 
     try {
       const rawYaml = await readFile(workflowPath, 'utf8')
@@ -259,7 +267,7 @@ async function scanProjects(): Promise<ProjectRecord[]> {
       const runs = await readRuns(rootPath)
       projects.push({
         id: encodeProjectId(rootPath),
-        name: entry.name,
+        name,
         rootPath,
         workflowPath,
         workflowCount: workflows.length,
@@ -272,7 +280,7 @@ async function scanProjects(): Promise<ProjectRecord[]> {
     } catch {
       projects.push({
         id: encodeProjectId(rootPath),
-        name: entry.name,
+        name,
         rootPath,
         workflowPath,
         workflowCount: 0,
@@ -285,6 +293,35 @@ async function scanProjects(): Promise<ProjectRecord[]> {
   }
 
   return projects.sort((left, right) => left.name.localeCompare(right.name))
+}
+
+async function findWorkflowProjectRoots(root: string, maxDepth: number): Promise<string[]> {
+  const found = new Set<string>()
+
+  async function visit(dir: string, depth: number) {
+    const workflowPath = path.join(dir, '.workflow', 'workflow.yaml')
+    if (existsSync(workflowPath)) {
+      found.add(dir)
+      return
+    }
+    if (depth >= maxDepth) return
+
+    let entries
+    try {
+      entries = await readdir(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      if (entry.name.startsWith('.') || IGNORED_DIRS.has(entry.name)) continue
+      await visit(path.join(dir, entry.name), depth + 1)
+    }
+  }
+
+  await visit(root, 0)
+  return [...found].sort((left, right) => left.localeCompare(right))
 }
 
 async function resolveProject(projectId: string): Promise<ProjectRecord> {

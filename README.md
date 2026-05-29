@@ -25,12 +25,14 @@ C:\Users\ml042\Projects\ai-mc\bin\ai-mc.js
 ```powershell
 $env:AI_MC_PROJECTS_ROOT="C:\Users\ml042\Projects"
 $env:AI_MC_CLI="C:\Users\ml042\Projects\ai-mc\bin\ai-mc.js"
+$env:AI_MC_SCAN_DEPTH="2"
 npm run dev
 ```
 
 ## MVP 功能
 
 - 掃描有 `.workflow/workflow.yaml` 的專案
+- 預設掃描 2 層資料夾，可用 `AI_MC_SCAN_DEPTH` 調整
 - 顯示 workflow 清單與 step 數量
 - 用 `ai-mc graph <workflow> --format mermaid` 顯示流程圖
 - 點選 step 查看 YAML 細節

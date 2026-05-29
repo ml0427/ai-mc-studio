@@ -89,6 +89,7 @@ type WizardRunSummary = {
 function App() {
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [projectsRoot, setProjectsRoot] = useState('')
+  const [scanDepth, setScanDepth] = useState(0)
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [project, setProject] = useState<ProjectDetail | null>(null)
   const [selectedWorkflow, setSelectedWorkflow] = useState('')
@@ -155,8 +156,9 @@ function App() {
   async function loadProjects() {
     setLoading(true)
     try {
-      const data = await api<{ projectsRoot: string; projects: ProjectSummary[] }>('/api/projects')
+      const data = await api<{ projectsRoot: string; scanDepth: number; projects: ProjectSummary[] }>('/api/projects')
       setProjectsRoot(data.projectsRoot)
+      setScanDepth(data.scanDepth)
       setProjects(data.projects)
       setSelectedProjectId((current) => current || data.projects[0]?.id || '')
       setToast({ tone: 'ok', message: `掃描到 ${data.projects.length} 個已接入專案` })
@@ -318,7 +320,7 @@ function App() {
           重新掃描
         </button>
 
-        <div className="rail-caption">掃描根目錄</div>
+        <div className="rail-caption">掃描根目錄 · depth {scanDepth}</div>
         <div className="path-chip" title={projectsRoot}>{projectsRoot || '尚未載入'}</div>
 
         <section className="project-list" aria-label="Projects">

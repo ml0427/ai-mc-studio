@@ -111,6 +111,9 @@ function App() {
   const selectedWorkflowSummary = project?.workflows.find((item) => item.name === selectedWorkflow)
   const selectedRun = runs.find((run) => run.runId === selectedRunId)
   const isDirty = Boolean(project && editorValue !== project.rawYaml)
+  const displayedWorkflowGraph = isDirty && workflow && selectedWorkflow
+    ? buildClientMermaid(selectedWorkflow, workflow)
+    : graphSource
 
   useEffect(() => {
     void loadProjects()
@@ -402,8 +405,9 @@ function App() {
             <div className="panel-title">
               <Workflow size={16} />
               Workflow Map
+              {isDirty && <span className="title-note dirty">preview</span>}
             </div>
-            {graphSource ? <MermaidChart chart={graphSource} /> : <EmptyState loading={loading} />}
+            {displayedWorkflowGraph ? <MermaidChart chart={displayedWorkflowGraph} /> : <EmptyState loading={loading} />}
           </section>
 
           <aside className="inspector-panel">
@@ -616,6 +620,59 @@ function parseWorkflowSpec(value: string, fallback?: WorkflowSpec | null): { spe
   } catch (error) {
     return { spec: fallback ?? null, error: errorMessage(error) }
   }
+}
+
+function buildClientMermaid(workflowName: string, workflow: WorkflowDefinition): string {
+  const steps = workflow.steps ?? []
+  const lines = [
+    'flowchart TD',
+    `  %% unsaved preview: ${workflowName}`,
+  ]
+
+  steps.forEach((step, index) => {
+    const nodeId = mermaidNodeId(step, index)
+    const label = [
+      step.id,
+      step.type,
+      step.when ? `when: ${step.when}` : '',
+    ].filter(Boolean).map(mermaidText).join('<br/>')
+    lines.push(`  ${nodeId}["${label}"]`)
+  })
+
+  for (let index = 1; index < steps.length; index += 1) {
+    const from = mermaidNodeId(steps[index - 1], index - 1)
+    const to = mermaidNodeId(steps[index], index)
+    const label = steps[index].when ? `|"${mermaidText(steps[index].when ?? '')}"|` : ''
+    lines.push(`  ${from} -->${label} ${to}`)
+  }
+
+  lines.push(
+    '  classDef ai fill:#eef2ff,stroke:#4f46e5,color:#111827;',
+    '  classDef shell fill:#ecfdf5,stroke:#059669,color:#111827;',
+    '  classDef edit fill:#fff7ed,stroke:#ea580c,color:#111827;',
+    '  classDef tool fill:#f8fafc,stroke:#64748b,color:#111827;',
+  )
+  steps.forEach((step, index) => {
+    lines.push(`  class ${mermaidNodeId(step, index)} ${mermaidTypeClass(step.type)};`)
+  })
+
+  return `${lines.join('\n')}\n`
+}
+
+function mermaidNodeId(step: WorkflowStep, index: number): string {
+  const safe = String(step.id).replace(/[^A-Za-z0-9_]/g, '_')
+  return `s${index}_${safe}`
+}
+
+function mermaidText(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, '<br/>')
+}
+
+function mermaidTypeClass(type: string): string {
+  if (type === 'code-edit' || type === 'tool-or-code-edit') return 'edit'
+  if (type === 'shell') return 'shell'
+  if (type === 'ai') return 'ai'
+  return 'tool'
 }
 
 export default App

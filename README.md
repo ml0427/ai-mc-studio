@@ -34,11 +34,13 @@ npm run dev
 - 顯示 workflow 清單與 step 數量
 - 用 `ai-mc graph <workflow> --format mermaid` 顯示流程圖
 - 點選 step 查看 YAML 細節
+- 用表單快速調整 step 的 `type`、`when`、`output`
 - 建立 wizard run，並監看 run 狀態圖
 - 編輯並儲存 workflow YAML
 - 儲存前會先用 `ai-mc validate --spec <temp-file>` 驗證
 - 儲存時會建立 `.bak.yaml` 備份
 - 未修改時不能儲存，修改後可一鍵還原目前檔案內容
+- Mermaid 會在需要畫圖時才載入，降低首屏 bundle 壓力
 
 ## 分工
 

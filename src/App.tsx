@@ -101,8 +101,9 @@ function App() {
   const [toast, setToast] = useState<ToastState | null>(null)
   const [loading, setLoading] = useState(false)
 
+  const editorSpec = useMemo(() => parseWorkflowSpec(editorValue, project?.spec), [editorValue, project])
   const workflow = selectedWorkflow
-    ? project?.spec.workflows?.[selectedWorkflow]
+    ? editorSpec.spec?.workflows?.[selectedWorkflow]
     : null
   const steps = useMemo(() => workflow?.steps ?? [], [workflow])
   const selectedStep = steps.find((step) => step.id === selectedStepId) ?? steps[0]
@@ -282,6 +283,25 @@ function App() {
     setSelectedStepId(targetProject.spec.workflows?.[nextWorkflow]?.steps?.[0]?.id ?? '')
   }
 
+  function updateSelectedStep(field: 'type' | 'when' | 'output', value: string) {
+    const parsed = parseWorkflowSpec(editorValue, null)
+    if (!parsed.spec || !selectedWorkflow || !selectedStep?.id) {
+      setToast({ tone: 'error', message: parsed.error ?? 'workflow.yaml 目前無法解析' })
+      return
+    }
+
+    const step = parsed.spec.workflows?.[selectedWorkflow]?.steps?.find((item) => item.id === selectedStep.id)
+    if (!step) return
+
+    if (value.trim()) {
+      step[field] = value
+    } else if (field !== 'type') {
+      delete step[field]
+    }
+
+    setEditorValue(YAML.stringify(parsed.spec))
+  }
+
   return (
     <main className="studio-shell">
       <aside className="project-rail">
@@ -411,8 +431,42 @@ function App() {
                 {selectedStep.blocks_downstream && <span>blocks</span>}
               </div>
             )}
+            {selectedStep && (
+              <div className="step-editor">
+                <label>
+                  <span>type</span>
+                  <select
+                    value={selectedStep.type}
+                    onChange={(event) => updateSelectedStep('type', event.target.value)}
+                  >
+                    <option value="ai">ai</option>
+                    <option value="shell">shell</option>
+                    <option value="tool-or-shell">tool-or-shell</option>
+                    <option value="tool-or-code-edit">tool-or-code-edit</option>
+                    <option value="file">file</option>
+                    <option value="code-edit">code-edit</option>
+                  </select>
+                </label>
+                <label>
+                  <span>when</span>
+                  <input
+                    value={selectedStep.when ?? ''}
+                    onChange={(event) => updateSelectedStep('when', event.target.value)}
+                    placeholder="always"
+                  />
+                </label>
+                <label>
+                  <span>output</span>
+                  <input
+                    value={selectedStep.output ?? ''}
+                    onChange={(event) => updateSelectedStep('output', event.target.value)}
+                    placeholder={selectedStep.id}
+                  />
+                </label>
+              </div>
+            )}
             <pre className="yaml-view">
-              {selectedStep ? YAML.stringify(selectedStep) : '尚未選擇 step'}
+              {editorSpec.error ? editorSpec.error : selectedStep ? YAML.stringify(selectedStep) : '尚未選擇 step'}
             </pre>
           </aside>
         </div>
@@ -551,6 +605,15 @@ function formatDate(value: string): string {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function parseWorkflowSpec(value: string, fallback?: WorkflowSpec | null): { spec: WorkflowSpec | null; error: string } {
+  if (!value.trim()) return { spec: fallback ?? null, error: '' }
+  try {
+    return { spec: YAML.parse(value) as WorkflowSpec, error: '' }
+  } catch (error) {
+    return { spec: fallback ?? null, error: errorMessage(error) }
+  }
 }
 
 export default App

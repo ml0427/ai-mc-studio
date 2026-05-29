@@ -99,9 +99,9 @@ type WizardRunState = {
   workflow?: string
   status?: string
   current_step?: string | null
-  completed_steps?: string[]
-  skipped_steps?: string[]
-  steps?: string[]
+  completed_steps?: unknown[]
+  skipped_steps?: unknown[]
+  steps?: unknown[]
   created_at?: string
   updated_at?: string
   inputs?: Record<string, unknown>
@@ -704,9 +704,9 @@ function App() {
 
 function RunDetails({ run, state }: { run: WizardRunSummary; state: WizardRunState | null }) {
   const inputs = state?.inputs ?? {}
-  const completedSteps = state?.completed_steps ?? []
-  const skippedSteps = state?.skipped_steps ?? []
-  const pendingSteps = (state?.steps ?? []).filter(
+  const completedSteps = (state?.completed_steps ?? []).map(runStepId)
+  const skippedSteps = (state?.skipped_steps ?? []).map(runStepId)
+  const pendingSteps = (state?.steps ?? []).map(runStepId).filter(
     (step) => !completedSteps.includes(step) && !skippedSteps.includes(step),
   )
 
@@ -844,6 +844,14 @@ function seedRunInputs(summary?: WorkflowSummary): Record<string, string> {
   }
 
   return next
+}
+
+function runStepId(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (value && typeof value === 'object' && 'id' in value) {
+    return String((value as { id?: unknown }).id ?? '')
+  }
+  return String(value ?? '')
 }
 
 function parseWorkflowSpec(value: string, fallback?: WorkflowSpec | null): { spec: WorkflowSpec | null; error: string } {

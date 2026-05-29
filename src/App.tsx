@@ -445,7 +445,7 @@ function App() {
           重新掃描
         </button>
 
-        <div className="rail-caption">掃描根目錄 · depth {scanDepth}</div>
+        <div className="rail-caption">掃描根目錄 · 層數 {scanDepth}</div>
         <div className="path-chip" title={projectsRoot}>{projectsRoot || '尚未載入'}</div>
 
         <label className="rail-search">
@@ -453,11 +453,11 @@ function App() {
           <input
             value={projectFilter}
             onChange={(event) => setProjectFilter(event.target.value)}
-            placeholder="搜尋專案或 workflow"
+            placeholder="搜尋專案或流程"
           />
         </label>
 
-        <section className="project-list" aria-label="Projects">
+        <section className="project-list" aria-label="專案列表">
           {filteredProjects.map((item) => (
             <button
               className={`project-row ${item.id === selectedProjectId ? 'active' : ''}`}
@@ -468,7 +468,7 @@ function App() {
               <FolderKanban size={17} />
               <span>
                 <strong>{item.name}</strong>
-                <small>{item.workflowCount} workflows · {item.stepCount} steps · {item.runCount} runs</small>
+                <small>{countLabel(item.workflowCount, '條流程')} · {countLabel(item.stepCount, '個步驟')} · {countLabel(item.runCount, '次執行')}</small>
               </span>
             </button>
           ))}
@@ -481,15 +481,15 @@ function App() {
       <section className="workbench">
         <header className="workbench-header">
           <div>
-            <p className="eyebrow">Project Workflow Console</p>
+            <p className="eyebrow">AI 司儀中控台</p>
             <h1>{project?.name ?? '選擇一個專案'}</h1>
             <div className="subtle-path">{project?.rootPath ?? '正在等待掃描結果'}</div>
             {project && (
               <div className="project-metrics">
-                <span>{project.workflowCount} workflows</span>
-                <span>{project.stepCount} steps</span>
-                <span>{project.runCount} runs</span>
-                <span>{project.latestRun?.status ?? 'no runs'}</span>
+                <span>{countLabel(project.workflowCount, '條流程')}</span>
+                <span>{countLabel(project.stepCount, '個步驟')}</span>
+                <span>{countLabel(project.runCount, '次執行')}</span>
+                <span>{project.latestRun ? statusLabel(project.latestRun.status) : '尚未執行'}</span>
               </div>
             )}
           </div>
@@ -500,7 +500,7 @@ function App() {
             </button>
             <button type="button" onClick={startRun} disabled={!project || !selectedWorkflow}>
               <Play size={16} />
-              建立 Run
+              開始執行
             </button>
             <button type="button" className="primary" onClick={saveWorkflow} disabled={!project || !isDirty}>
               <Save size={16} />
@@ -517,10 +517,10 @@ function App() {
         )}
 
         <div className="studio-grid">
-          <nav className="workflow-panel" aria-label="Workflows">
+          <nav className="workflow-panel" aria-label="流程列表">
             <div className="panel-title">
               <GitBranch size={16} />
-              Workflows
+              流程
             </div>
             {project?.workflows.map((item) => (
               <button
@@ -530,7 +530,7 @@ function App() {
                 onClick={() => project && selectWorkflow(project, item.name)}
               >
                 <strong>{item.name}</strong>
-                <span>{item.stepCount} steps · {item.gateCount} gates</span>
+                <span>{countLabel(item.stepCount, '個步驟')} · {countLabel(item.gateCount, '個檢查點')}</span>
               </button>
             ))}
           </nav>
@@ -538,8 +538,8 @@ function App() {
           <section className="graph-panel">
             <div className="panel-title">
               <Workflow size={16} />
-              Workflow Map
-              {isDirty && <span className="title-note dirty">preview</span>}
+              流程圖
+              {isDirty && <span className="title-note dirty">草稿預覽</span>}
             </div>
             {displayedWorkflowGraph ? <MermaidChart chart={displayedWorkflowGraph} /> : <EmptyState loading={loading} />}
           </section>
@@ -547,7 +547,7 @@ function App() {
           <aside className="inspector-panel">
             <div className="panel-title">
               <FileCode2 size={16} />
-              Step Inspector
+              步驟設定
             </div>
             <div className="step-stack">
               {steps.map((step) => (
@@ -565,16 +565,16 @@ function App() {
             {selectedStep && (
               <div className="step-facts">
                 <span>{selectedStep.type}</span>
-                {selectedStep.when && <span>when</span>}
+                {selectedStep.when && <span>條件</span>}
                 {selectedStep.command_ref && <span>{selectedStep.command_ref}</span>}
-                {selectedStep.output && <span>out: {selectedStep.output}</span>}
-                {selectedStep.blocks_downstream && <span>blocks</span>}
+                {selectedStep.output && <span>輸出：{selectedStep.output}</span>}
+                {selectedStep.blocks_downstream && <span>會阻擋後續</span>}
               </div>
             )}
             {selectedStep && (
               <div className="step-editor">
                 <label>
-                  <span>type</span>
+                  <span>類型</span>
                   <select
                     value={selectedStep.type}
                     onChange={(event) => updateSelectedStep('type', event.target.value)}
@@ -588,7 +588,7 @@ function App() {
                   </select>
                 </label>
                 <label>
-                  <span>when</span>
+                  <span>執行條件</span>
                   <input
                     value={selectedStep.when ?? ''}
                     onChange={(event) => updateSelectedStep('when', event.target.value)}
@@ -596,7 +596,7 @@ function App() {
                   />
                 </label>
                 <label>
-                  <span>output</span>
+                  <span>輸出名稱</span>
                   <input
                     value={selectedStep.output ?? ''}
                     onChange={(event) => updateSelectedStep('output', event.target.value)}
@@ -606,7 +606,7 @@ function App() {
               </div>
             )}
             <pre className="yaml-view">
-              {editorSpec.error ? editorSpec.error : selectedStep ? YAML.stringify(selectedStep) : '尚未選擇 step'}
+              {editorSpec.error ? editorSpec.error : selectedStep ? YAML.stringify(selectedStep) : '尚未選擇步驟'}
             </pre>
           </aside>
         </div>
@@ -615,7 +615,7 @@ function App() {
           <div className="panel-title">
             <FileCode2 size={16} />
             workflow.yaml
-            {isDirty && <span className="title-note dirty">unsaved</span>}
+            {isDirty && <span className="title-note dirty">尚未儲存</span>}
             <button className="icon-action" type="button" onClick={() => project && setEditorValue(project.rawYaml)} disabled={!isDirty}>
               <RotateCcw size={14} />
               還原
@@ -629,7 +629,7 @@ function App() {
           {validationResult && (
             <div className={`validation-result ${validationResult.tone}`}>
               <strong>{validationResult.title}</strong>
-              <pre>{validationResult.output || 'OK'}</pre>
+              <pre>{validationResult.output || '通過'}</pre>
             </div>
           )}
         </section>
@@ -638,7 +638,7 @@ function App() {
           <div className="run-list">
             <div className="panel-title">
               <History size={16} />
-              Wizard Runs
+              執行紀錄
               <button
                 className="icon-action"
                 type="button"
@@ -651,7 +651,7 @@ function App() {
             </div>
             {selectedWorkflowSummary && (
               <div className="run-inputs">
-                <div className="run-input-title">{selectedWorkflow} inputs</div>
+                <div className="run-input-title">{selectedWorkflow} 的輸入欄位</div>
                 {[
                   ...selectedWorkflowSummary.requiredInputs.map((name) => ({ name, required: true })),
                   ...selectedWorkflowSummary.optionalInputs.map((name) => ({ name, required: false })),
@@ -661,17 +661,17 @@ function App() {
                     <input
                       value={runInputValues[input.name] ?? ''}
                       onChange={(event) => updateRunInput(input.name, event.target.value)}
-                      placeholder={input.required ? 'required' : 'optional'}
+                      placeholder={input.required ? '必填' : '選填'}
                     />
                   </label>
                 ))}
                 {selectedWorkflowSummary.requiredInputs.length + selectedWorkflowSummary.optionalInputs.length === 0 && (
-                  <div className="mini-empty">這個 workflow 沒有 inputs，可以直接建立 Run。</div>
+                  <div className="mini-empty">這條流程沒有輸入欄位，可以直接開始執行。</div>
                 )}
               </div>
             )}
             {runs.length === 0 ? (
-              <div className="mini-empty">目前沒有 run，按「建立 Run」開始。</div>
+              <div className="mini-empty">目前沒有執行紀錄，按「開始執行」。</div>
             ) : runs.map((run) => (
               <button
                 className={`run-row ${run.runId === selectedRunId ? 'active' : ''}`}
@@ -680,7 +680,7 @@ function App() {
                 onClick={() => selectRun(run.runId)}
               >
                 <strong>{run.workflow}</strong>
-                <span>{run.currentStep ?? run.status}</span>
+                <span>{run.currentStep ?? statusLabel(run.status)}</span>
                 <small>{run.completedCount + run.skippedCount}/{run.totalSteps} · {formatDate(run.updatedAt)}</small>
               </button>
             ))}
@@ -688,7 +688,7 @@ function App() {
           <div className="run-graph">
             <div className="panel-title">
               <Workflow size={16} />
-              Run Status
+              執行狀態
               {selectedRun && <span className="title-note">{selectedRun.runId}</span>}
             </div>
             {runGraphSource ? <MermaidChart chart={runGraphSource} /> : <EmptyState loading={loading} />}
@@ -713,29 +713,29 @@ function RunDetails({ run, state }: { run: WizardRunSummary; state: WizardRunSta
   return (
     <div className="run-details">
       <div className="run-detail-grid">
-        <span>Status</span>
-        <strong>{run.status}</strong>
-        <span>Current</span>
-        <strong>{run.currentStep ?? 'done'}</strong>
-        <span>Progress</span>
+        <span>狀態</span>
+        <strong>{statusLabel(run.status)}</strong>
+        <span>目前步驟</span>
+        <strong>{run.currentStep ?? '已完成'}</strong>
+        <span>進度</span>
         <strong>{run.completedCount + run.skippedCount}/{run.totalSteps}</strong>
-        <span>Updated</span>
+        <span>更新時間</span>
         <strong>{formatDate(run.updatedAt)}</strong>
       </div>
 
       <div className="run-detail-section">
-        <span>Inputs</span>
+        <span>輸入內容</span>
         {Object.keys(inputs).length === 0 ? (
-          <small>none</small>
+          <small>無</small>
         ) : (
           <pre>{JSON.stringify(inputs, null, 2)}</pre>
         )}
       </div>
 
       <div className="run-detail-section">
-        <span>Remaining Steps</span>
+        <span>尚未執行的步驟</span>
         {pendingSteps.length === 0 ? (
-          <small>none</small>
+          <small>無</small>
         ) : (
           <div className="run-step-pills">
             {pendingSteps.map((step) => <small key={step}>{step}</small>)}
@@ -800,8 +800,8 @@ function EmptyState({ loading }: { loading: boolean }) {
   return (
     <div className="empty-state">
       <Workflow size={28} />
-      <strong>{loading ? '讀取中' : '沒有可顯示的 workflow'}</strong>
-      <span>掃描專案後會在這裡顯示流程圖。</span>
+      <strong>{loading ? '讀取中' : '目前沒有可顯示的流程圖'}</strong>
+      <span>選擇專案和流程後會在這裡顯示。</span>
     </div>
   )
 }
@@ -830,6 +830,22 @@ function formatDate(value: string): string {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function countLabel(count: number, unit: string): string {
+  return `${count} ${unit}`
+}
+
+function statusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    completed: '已完成',
+    blocked: '等待處理',
+    running: '執行中',
+    pending: '尚未開始',
+    failed: '失敗',
+    cancelled: '已取消',
+  }
+  return labels[status] ?? status
 }
 
 function seedRunInputs(summary?: WorkflowSummary): Record<string, string> {

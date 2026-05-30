@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import {
   AlertTriangle,
+  Box,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   FileCode2,
   FolderKanban,
   GitBranch,
@@ -51,6 +54,13 @@ type WorkflowSummary = {
   optionalInputs: string[]
   inputExamples?: Record<string, string>
   gateCount: number
+}
+
+type StepTemplate = {
+  type: string
+  label: string
+  hint: string
+  outputPrefix: string
 }
 
 type ProjectSummary = {
@@ -108,6 +118,45 @@ type WizardRunState = {
   inputs?: Record<string, unknown>
 }
 
+const STEP_TEMPLATES: StepTemplate[] = [
+  {
+    type: 'ai',
+    label: '請 AI 想一想',
+    hint: '整理想法、做判斷、寫說明',
+    outputPrefix: 'ai_step',
+  },
+  {
+    type: 'shell',
+    label: '請電腦執行指令',
+    hint: '跑測試、建置、查狀態',
+    outputPrefix: 'run_command',
+  },
+  {
+    type: 'tool-or-shell',
+    label: '用工具或指令',
+    hint: '先試工具，不行再跑指令',
+    outputPrefix: 'tool_step',
+  },
+  {
+    type: 'tool-or-code-edit',
+    label: '用工具或改檔案',
+    hint: '讓 AI 做一段清楚改動',
+    outputPrefix: 'edit_with_tool',
+  },
+  {
+    type: 'code-edit',
+    label: '修改程式',
+    hint: '真的動到程式碼',
+    outputPrefix: 'code_change',
+  },
+  {
+    type: 'file',
+    label: '讀寫檔案',
+    hint: '產生或檢查檔案',
+    outputPrefix: 'file_step',
+  },
+]
+
 function App() {
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [projectsRoot, setProjectsRoot] = useState('')
@@ -127,6 +176,7 @@ function App() {
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null)
   const [toast, setToast] = useState<ToastState | null>(null)
   const [loading, setLoading] = useState(false)
+  const [showAdvancedEditor, setShowAdvancedEditor] = useState(false)
 
   const editorSpec = useMemo(() => parseWorkflowSpec(editorValue, project?.spec), [editorValue, project])
   const workflow = selectedWorkflow
@@ -449,6 +499,39 @@ function App() {
     setEditorValue(YAML.stringify(parsed.spec))
   }
 
+  function addStepFromTemplate(template: StepTemplate) {
+    const parsed = parseWorkflowSpec(editorValue, null)
+    if (!parsed.spec || !selectedWorkflow) {
+      setToast({ tone: 'error', message: parsed.error ?? '目前還沒有可以加入積木的流程' })
+      return
+    }
+
+    const targetWorkflow = parsed.spec.workflows?.[selectedWorkflow]
+    if (!targetWorkflow) {
+      setToast({ tone: 'error', message: '請先挑一條流程，再加入積木。' })
+      return
+    }
+
+    const currentSteps = targetWorkflow.steps ?? []
+    const nextId = uniqueStepId(currentSteps, template.outputPrefix)
+    const nextStep: WorkflowStep = {
+      id: nextId,
+      type: template.type,
+      output: nextId,
+    }
+    targetWorkflow.steps = [...currentSteps, nextStep]
+    setEditorValue(YAML.stringify(parsed.spec))
+    setSelectedStepId(nextId)
+    setToast({ tone: 'info', message: `已加入積木：${template.label}` })
+  }
+
+  function handleStageDrop(event: DragEvent<HTMLElement>) {
+    event.preventDefault()
+    const type = event.dataTransfer.getData('application/x-step-type')
+    const template = STEP_TEMPLATES.find((item) => item.type === type)
+    if (template) addStepFromTemplate(template)
+  }
+
   return (
     <main className="studio-shell">
       <aside className="project-rail">
@@ -544,7 +627,7 @@ function App() {
         )}
 
         <div className="studio-grid">
-          <nav className="workflow-panel" aria-label="流程列表">
+          <nav className="workflow-panel block-toolbox" aria-label="流程和積木工具箱">
             <div className="panel-title">
               <GitBranch size={16} />
               流程
@@ -560,16 +643,33 @@ function App() {
                 <span>{countLabel(item.stepCount, '個步驟')} · {countLabel(item.gateCount, '個檢查點')}</span>
               </button>
             ))}
+            <BlockToolbox onAddStep={addStepFromTemplate} />
           </nav>
 
-          <section className="graph-panel">
+          <section
+            className="graph-panel stage-panel"
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={handleStageDrop}
+          >
             <div className="panel-title">
               <Workflow size={16} />
-              流程圖
+              舞台
               {isDirty && <span className="title-note dirty">草稿預覽</span>}
             </div>
             <StepLegend />
-            {displayedWorkflowGraph ? <MermaidChart chart={displayedWorkflowGraph} /> : <EmptyState loading={loading} />}
+            {displayedWorkflowGraph ? (
+              <MermaidChart
+                chart={displayedWorkflowGraph}
+                steps={steps}
+                selectedStepId={selectedStep?.id}
+                onSelectStep={setSelectedStepId}
+              />
+            ) : <EmptyState loading={loading} />}
+            <StageBlocks
+              steps={steps}
+              selectedStepId={selectedStep?.id}
+              onSelectStep={setSelectedStepId}
+            />
           </section>
 
           <aside className="inspector-panel">
@@ -637,28 +737,40 @@ function App() {
                 </label>
               </div>
             )}
-            <pre className="yaml-view">
-              {editorSpec.error ? editorSpec.error : selectedStep ? YAML.stringify(selectedStep) : '尚未選擇步驟'}
-            </pre>
+            <SelectedStepSummary step={selectedStep} error={editorSpec.error} />
           </aside>
         </div>
 
-        <section className="editor-panel">
-          <div className="panel-title">
-            <FileCode2 size={16} />
-            進階流程原始檔
-            <span className="title-note">workflow.yaml</span>
-            {isDirty && <span className="title-note dirty">尚未儲存</span>}
-            <button className="icon-action" type="button" onClick={() => project && setEditorValue(project.rawYaml)} disabled={!isDirty}>
-              <RotateCcw size={14} />
-              還原
-            </button>
-          </div>
-          <textarea
-            spellCheck={false}
-            value={editorValue}
-            onChange={(event) => setEditorValue(event.target.value)}
-          />
+        <section className={`editor-panel advanced-panel ${showAdvancedEditor ? 'open' : ''}`}>
+          <button
+            className="advanced-toggle"
+            type="button"
+            onClick={() => setShowAdvancedEditor((current) => !current)}
+          >
+            {showAdvancedEditor ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            <span>
+              <strong>進階流程原始檔</strong>
+              <small>需要直接調整 workflow.yaml 時再打開</small>
+            </span>
+            {isDirty && <i>尚未儲存</i>}
+          </button>
+          {showAdvancedEditor && (
+            <>
+              <div className="panel-title">
+                <FileCode2 size={16} />
+                workflow.yaml
+                <button className="icon-action" type="button" onClick={() => project && setEditorValue(project.rawYaml)} disabled={!isDirty}>
+                  <RotateCcw size={14} />
+                  還原
+                </button>
+              </div>
+              <textarea
+                spellCheck={false}
+                value={editorValue}
+                onChange={(event) => setEditorValue(event.target.value)}
+              />
+            </>
+          )}
           {validationResult && (
             <div className={`validation-result ${validationResult.tone}`}>
               <strong>{validationResult.title}</strong>
@@ -778,34 +890,37 @@ function RunDetails({ run, state }: { run: WizardRunSummary; state: WizardRunSta
         <strong>{formatDate(run.updatedAt)}</strong>
       </div>
 
-      <div className="run-detail-section">
-        <span>輸入內容</span>
-        {Object.keys(inputs).length === 0 ? (
-          <small>無</small>
-        ) : (
-          <pre>{JSON.stringify(inputs, null, 2)}</pre>
-        )}
-      </div>
-
-      <div className="run-detail-section">
-        <span>尚未執行的步驟</span>
-        {pendingSteps.length === 0 ? (
-          <small>無</small>
-        ) : (
-          <div className="run-step-pills">
-            {pendingSteps.map((step) => <small key={step}>{step}</small>)}
-          </div>
-        )}
-      </div>
-
-      <div className="run-state-path" title={run.statePath}>{run.statePath}</div>
+      <ResultCollection
+        stateReady={Boolean(state)}
+        inputs={inputs}
+        completedSteps={completedSteps}
+        skippedSteps={skippedSteps}
+        pendingSteps={pendingSteps}
+        statePath={run.statePath}
+      />
     </div>
   )
 }
 
-function MermaidChart({ chart }: { chart: string }) {
+function MermaidChart({
+  chart,
+  steps = [],
+  selectedStepId,
+  onSelectStep,
+}: {
+  chart: string
+  steps?: WorkflowStep[]
+  selectedStepId?: string
+  onSelectStep?: (stepId: string) => void
+}) {
   const elementRef = useRef<HTMLDivElement>(null)
+  const selectedStepIdRef = useRef(selectedStepId)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    selectedStepIdRef.current = selectedStepId
+    if (elementRef.current) highlightMermaidStep(elementRef.current, selectedStepId)
+  }, [selectedStepId])
 
   useEffect(() => {
     let cancelled = false
@@ -824,6 +939,8 @@ function MermaidChart({ chart }: { chart: string }) {
       const { svg } = await mermaid.render(id, chart)
       if (!cancelled && elementRef.current) {
         elementRef.current.innerHTML = svg
+        wireMermaidStepClicks(elementRef.current, steps, onSelectStep)
+        highlightMermaidStep(elementRef.current, selectedStepIdRef.current)
         setError('')
       }
     }
@@ -842,13 +959,167 @@ function MermaidChart({ chart }: { chart: string }) {
     return () => {
       cancelled = true
     }
-  }, [chart])
+  }, [chart, onSelectStep, steps])
 
   if (error) {
     return <pre className="yaml-view error-text">{error}</pre>
   }
 
   return <div className="mermaid-stage" ref={elementRef} />
+}
+
+function BlockToolbox({ onAddStep }: { onAddStep: (template: StepTemplate) => void }) {
+  return (
+    <section className="toolbox-section" aria-label="積木工具箱">
+      <div className="panel-title">
+        <Box size={16} />
+        積木工具箱
+      </div>
+      <div className="toolbox-list">
+        {STEP_TEMPLATES.map((template) => {
+          const meta = stepTypeMeta(template.type)
+          return (
+            <button
+              className={`toolbox-block ${meta.className}`}
+              draggable
+              key={template.type}
+              type="button"
+              onClick={() => onAddStep(template)}
+              onDragStart={(event) => {
+                event.dataTransfer.setData('application/x-step-type', template.type)
+                event.dataTransfer.effectAllowed = 'copy'
+              }}
+            >
+              <strong>{template.label}</strong>
+              <span>{template.hint}</span>
+            </button>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+function StageBlocks({
+  steps,
+  selectedStepId,
+  onSelectStep,
+}: {
+  steps: WorkflowStep[]
+  selectedStepId?: string
+  onSelectStep: (stepId: string) => void
+}) {
+  return (
+    <div className="stage-blocks" aria-label="舞台積木列">
+      <div className="panel-title">
+        <Box size={16} />
+        積木列
+      </div>
+      {steps.length === 0 ? (
+        <div className="mini-empty">把左邊的積木拖到舞台，或點一下積木加入流程。</div>
+      ) : (
+        <div className="stage-block-row">
+          {steps.map((step, index) => {
+            const meta = stepTypeMeta(step.type)
+            return (
+              <button
+                className={`stage-block ${meta.className} ${step.id === selectedStepId ? 'active' : ''}`}
+                key={step.id}
+                type="button"
+                onClick={() => onSelectStep(step.id)}
+              >
+                <small>{index + 1}</small>
+                <strong>{step.id}</strong>
+                <span>{meta.label}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SelectedStepSummary({ step, error }: { step?: WorkflowStep; error: string }) {
+  if (error) return <pre className="yaml-view error-text">{error}</pre>
+  if (!step) return <div className="mini-empty">尚未選擇步驟</div>
+
+  const facts = [
+    ['積木名稱', step.id],
+    ['做的事情', stepTypeMeta(step.type).label],
+    ['什麼時候做', step.when || '接到上一塊就做'],
+    ['完成後名字', step.output || '尚未命名'],
+    ['會不會卡住後面', step.blocks_downstream ? '會，需要先處理' : '不會'],
+  ]
+
+  return (
+    <div className="step-summary">
+      {facts.map(([label, value]) => (
+        <div key={label}>
+          <span>{label}</span>
+          <strong>{value}</strong>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ResultCollection({
+  stateReady,
+  inputs,
+  completedSteps,
+  skippedSteps,
+  pendingSteps,
+  statePath,
+}: {
+  stateReady: boolean
+  inputs: Record<string, unknown>
+  completedSteps: string[]
+  skippedSteps: string[]
+  pendingSteps: string[]
+  statePath: string
+}) {
+  const inputPairs = Object.entries(inputs)
+  return (
+    <div className="result-collection">
+      <div className="panel-title">
+        <Box size={16} />
+        成果收集箱
+      </div>
+      {!stateReady && (
+        <div className="mini-empty">正在讀取這次執行的詳細紀錄，稍等一下就會放進收集箱。</div>
+      )}
+      <div className="result-grid">
+        <ResultCard title="已完成" value={`${completedSteps.length} 塊`} items={completedSteps} />
+        <ResultCard title="跳過" value={`${skippedSteps.length} 塊`} items={skippedSteps} />
+        <ResultCard title="還沒跑" value={`${pendingSteps.length} 塊`} items={pendingSteps} />
+      </div>
+      <div className="result-inputs">
+        <span>這次帶進流程的內容</span>
+        {inputPairs.length === 0 ? (
+          <small>無</small>
+        ) : inputPairs.map(([key, value]) => (
+          <small key={key}>{key}: {readableValue(value)}</small>
+        ))}
+      </div>
+      <div className="run-state-path" title={statePath}>進階紀錄位置：{statePath}</div>
+    </div>
+  )
+}
+
+function ResultCard({ title, value, items }: { title: string; value: string; items: string[] }) {
+  return (
+    <div className="result-card">
+      <span>{title}</span>
+      <strong>{value}</strong>
+      {items.length > 0 && (
+        <div className="run-step-pills">
+          {items.slice(0, 6).map((item) => <small key={item}>{item}</small>)}
+          {items.length > 6 && <small>還有 {items.length - 6} 塊</small>}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function EmptyState({ loading }: { loading: boolean }) {
@@ -1026,6 +1297,29 @@ function inputPlaceholder(inputName: string, required: boolean, summary: Workflo
   return required ? '必填' : '選填'
 }
 
+function uniqueStepId(steps: WorkflowStep[], prefix: string): string {
+  const used = new Set(steps.map((step) => step.id))
+  let index = steps.length + 1
+  let candidate = `${prefix}_${index}`
+  while (used.has(candidate)) {
+    index += 1
+    candidate = `${prefix}_${index}`
+  }
+  return candidate
+}
+
+function readableValue(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (Array.isArray(value)) return value.map(readableValue).join('、')
+  if (value && typeof value === 'object') {
+    return Object.entries(value)
+      .map(([key, item]) => `${key}: ${readableValue(item)}`)
+      .join('、')
+  }
+  return String(value ?? '')
+}
+
 function seedRunInputs(summary?: WorkflowSummary): Record<string, string> {
   const next: Record<string, string> = {}
   if (!summary) return next
@@ -1092,6 +1386,45 @@ function buildClientMermaid(workflowName: string, workflow: WorkflowDefinition):
   })
 
   return `${lines.join('\n')}\n`
+}
+
+function wireMermaidStepClicks(
+  element: HTMLDivElement,
+  steps: WorkflowStep[],
+  onSelectStep?: (stepId: string) => void,
+) {
+  if (!onSelectStep || steps.length === 0) return
+  const nodes = [...element.querySelectorAll<SVGGElement>('g.node')]
+  const longestFirst = [...steps].sort((left, right) => right.id.length - left.id.length)
+  for (const node of nodes) {
+    const text = node.textContent ?? ''
+    const labelParts = [...node.querySelectorAll('tspan, span')]
+      .map((item) => item.textContent?.trim() ?? '')
+      .filter(Boolean)
+    const step = longestFirst.find((item) => (
+      labelParts.includes(item.id)
+      || text.trim() === item.id
+      || text.trim().startsWith(item.id)
+    ))
+    if (!step) continue
+    node.dataset.stepId = step.id
+    node.setAttribute('role', 'button')
+    node.setAttribute('tabindex', '0')
+    node.addEventListener('click', () => onSelectStep(step.id))
+    node.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault()
+        onSelectStep(step.id)
+      }
+    })
+  }
+}
+
+function highlightMermaidStep(element: HTMLDivElement, selectedStepId?: string) {
+  const nodes = [...element.querySelectorAll<SVGGElement>('g.node')]
+  for (const node of nodes) {
+    node.classList.toggle('selected-mermaid-node', Boolean(selectedStepId && node.dataset.stepId === selectedStepId))
+  }
 }
 
 function mermaidNodeId(step: WorkflowStep, index: number): string {

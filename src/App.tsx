@@ -1,4 +1,4 @@
-import { useEffect, useState, type DragEvent } from 'react'
+import { useEffect, useRef, useState, type DragEvent } from 'react'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -40,11 +40,13 @@ import './App.css'
 function App() {
   const [selectedWorkflow, setSelectedWorkflow] = useState('')
   const [selectedStepId, setSelectedStepId] = useState('')
+  const [locatedStepId, setLocatedStepId] = useState('')
   const [graphSource, setGraphSource] = useState('')
   const [runInputValues, setRunInputValues] = useState<Record<string, string>>({})
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null)
   const [toast, setToast] = useState<ToastState | null>(null)
   const [showAdvancedEditor, setShowAdvancedEditor] = useState(false)
+  const locatedStepTimerRef = useRef<number | null>(null)
   const {
     projectsRoot,
     scanDepth,
@@ -127,6 +129,10 @@ function App() {
     window.addEventListener('keydown', handleUndo)
     return () => window.removeEventListener('keydown', handleUndo)
   }, [editorUndoStack.length, undoEditorValue])
+
+  useEffect(() => () => {
+    if (locatedStepTimerRef.current) window.clearTimeout(locatedStepTimerRef.current)
+  }, [])
 
   useEffect(() => {
     function confirmLeave(event: BeforeUnloadEvent) {
@@ -267,6 +273,17 @@ function App() {
     requestProjectSelection(projectId, canSwitch)
   }
 
+  function locateStepOnStage(stepId: string) {
+    if (!stepId) return
+    setSelectedStepId(stepId)
+    setLocatedStepId(stepId)
+    if (locatedStepTimerRef.current) window.clearTimeout(locatedStepTimerRef.current)
+    locatedStepTimerRef.current = window.setTimeout(() => {
+      setLocatedStepId('')
+      locatedStepTimerRef.current = null
+    }, 1600)
+  }
+
   function updateRunInput(inputName: string, value: string) {
     setRunInputValues((current) => ({
       ...current,
@@ -365,6 +382,7 @@ function App() {
             <StageBlocks
               steps={steps}
               selectedStepId={selectedStep?.id}
+              locatedStepId={locatedStepId}
               onSelectStep={setSelectedStepId}
               onReorderStep={reorderStep}
               onDuplicateStep={duplicateStep}
@@ -441,7 +459,7 @@ function App() {
           onUpdateRunInput={updateRunInput}
           onRefreshRuns={refreshRuns}
           onSelectRun={selectRun}
-          onSelectStep={setSelectedStepId}
+          onSelectStep={locateStepOnStage}
         />
       </section>
     </main>

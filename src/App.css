@@ -568,6 +568,27 @@ h1 {
   box-shadow: 0 0 0 2px #d7ff64;
 }
 
+.stage-block.located {
+  animation: stage-locate-pulse 1.45s ease-out;
+}
+
+@keyframes stage-locate-pulse {
+  0% {
+    box-shadow: 0 0 0 2px #d7ff64, 0 0 0 0 rgba(91, 110, 225, 0.35);
+    transform: translateY(0);
+  }
+
+  35% {
+    box-shadow: 0 0 0 2px #d7ff64, 0 0 0 8px rgba(91, 110, 225, 0.16);
+    transform: translateY(-2px);
+  }
+
+  100% {
+    box-shadow: 0 0 0 2px #d7ff64, 0 0 0 14px rgba(91, 110, 225, 0);
+    transform: translateY(0);
+  }
+}
+
 .stage-block small,
 .stage-block strong,
 .stage-block span {

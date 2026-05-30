@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { ArrowLeft, ArrowRight, Box, Copy, GripVertical, Trash2 } from 'lucide-react'
 import { stepTypeMeta } from '../data/stepTemplates'
 import type { WorkflowStep } from '../types/workflow'
@@ -5,6 +6,7 @@ import type { WorkflowStep } from '../types/workflow'
 export function StageBlocks({
   steps,
   selectedStepId,
+  locatedStepId,
   onSelectStep,
   onReorderStep,
   onDuplicateStep,
@@ -12,11 +14,23 @@ export function StageBlocks({
 }: {
   steps: WorkflowStep[]
   selectedStepId?: string
+  locatedStepId?: string
   onSelectStep: (stepId: string) => void
   onReorderStep: (fromIndex: number, toIndex: number) => void
   onDuplicateStep: (stepId: string) => void
   onDeleteStep: (stepId: string) => void
 }) {
+  const blockRefs = useRef<Record<string, HTMLDivElement | null>>({})
+
+  useEffect(() => {
+    if (!locatedStepId) return
+    blockRefs.current[locatedStepId]?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: 'center',
+    })
+  }, [locatedStepId])
+
   return (
     <div className="stage-blocks" aria-label="舞台積木列">
       <div className="panel-title">
@@ -31,9 +45,17 @@ export function StageBlocks({
             const meta = stepTypeMeta(step.type)
             return (
               <div
-                className={`stage-block ${meta.className} ${step.id === selectedStepId ? 'active' : ''}`}
+                className={[
+                  'stage-block',
+                  meta.className,
+                  step.id === selectedStepId ? 'active' : '',
+                  step.id === locatedStepId ? 'located' : '',
+                ].filter(Boolean).join(' ')}
                 draggable
                 key={step.id}
+                ref={(node) => {
+                  blockRefs.current[step.id] = node
+                }}
                 role="button"
                 tabIndex={0}
                 onClick={() => onSelectStep(step.id)}

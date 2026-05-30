@@ -19,6 +19,7 @@ import { StageBlocks } from './components/StageBlocks'
 import { StarterGuide } from './components/StarterGuide'
 import { StepInspector } from './components/StepInspector'
 import { StepLegend } from './components/StepSummary'
+import { TaskLaunchPanel } from './components/TaskLaunchPanel'
 import { WorkbenchHeader } from './components/WorkbenchHeader'
 import { WorkflowPanel } from './components/WorkflowPanel'
 import { useProjects } from './hooks/useProjects'
@@ -379,6 +380,20 @@ function App() {
           requiredInputCount={selectedWorkflowSummary?.requiredInputs.length ?? 0}
         />
 
+        <TaskLaunchPanel
+          selectedWorkflow={selectedWorkflow}
+          selectedWorkflowSummary={selectedWorkflowSummary}
+          hasRunInputExamples={hasRunInputExamples}
+          runInputValues={runInputValues}
+          runStartConfirm={runStartConfirm}
+          steps={steps}
+          onFillRunInputExamples={fillRunInputExamples}
+          onOpenRunStartConfirm={openRunStartConfirm}
+          onCancelRunStartConfirm={() => setRunStartConfirm(null)}
+          onConfirmStartRun={() => void confirmStartRun()}
+          onUpdateRunInput={updateRunInput}
+        />
+
         {toast && (
           <div className={`toast ${toast.tone}`}>
             {toast.tone === 'error' ? <AlertTriangle size={16} /> : <CheckCircle2 size={16} />}
@@ -479,22 +494,13 @@ function App() {
 
         <RunPanel
           project={project}
-          selectedWorkflow={selectedWorkflow}
-          selectedWorkflowSummary={selectedWorkflowSummary}
-          hasRunInputExamples={hasRunInputExamples}
-          runInputValues={runInputValues}
           runs={runs}
           selectedRunId={selectedRunId}
           selectedRun={selectedRun}
           selectedRunState={selectedRunState}
           runGraphSource={runGraphSource}
-          runStartConfirm={runStartConfirm}
           stageStepIds={steps.map((step) => step.id)}
           loading={loading}
-          onFillRunInputExamples={fillRunInputExamples}
-          onCancelRunStartConfirm={() => setRunStartConfirm(null)}
-          onConfirmStartRun={() => void confirmStartRun()}
-          onUpdateRunInput={updateRunInput}
           onRefreshRuns={refreshRuns}
           onSelectRun={selectRun}
           onSelectStep={locateStepOnStage}

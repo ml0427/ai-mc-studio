@@ -48,7 +48,7 @@ export function RunStartConfirmCard({
         </div>
       ) : (
         <div className="run-confirm-body">
-          <p>補完後再按「開始執行」。</p>
+          <p>補完後再按「開始前檢查」。</p>
         </div>
       )}
 

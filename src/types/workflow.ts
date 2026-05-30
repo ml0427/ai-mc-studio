@@ -93,8 +93,11 @@ export type WizardRunState = {
   workflow?: string
   status?: string
   current_step?: string | null
+  runDir?: string
+  context?: Record<string, unknown>
   completed_steps?: unknown[]
   skipped_steps?: unknown[]
+  required_artifacts?: Record<string, unknown>
   steps?: unknown[]
   created_at?: string
   updated_at?: string

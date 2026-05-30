@@ -1277,7 +1277,7 @@ h1 {
 
 .result-step-card summary {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) minmax(0, 220px) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   min-height: 54px;
@@ -1323,7 +1323,6 @@ h1 {
 
 .result-step-main strong,
 .result-step-main small,
-.result-step-output,
 .result-step-body dd,
 .result-step-body p {
   min-width: 0;
@@ -1335,15 +1334,9 @@ h1 {
   font-size: 13px;
 }
 
-.result-step-main small,
-.result-step-output {
+.result-step-main small {
   color: #59616d;
   font-size: 12px;
-}
-
-.result-step-output {
-  display: block;
-  max-width: 220px;
 }
 
 .result-step-body {
@@ -1587,11 +1580,6 @@ h1 {
 
   .result-step-card summary {
     grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .result-step-output {
-    grid-column: 2;
-    max-width: 100%;
   }
 
   .result-step-card summary::after {

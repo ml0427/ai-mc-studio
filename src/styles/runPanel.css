@@ -360,6 +360,13 @@
   font-size: 12px;
 }
 
+.result-step-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.view-step-button,
 .copy-result-button {
   justify-self: start;
   display: inline-flex;
@@ -371,6 +378,18 @@
   color: #172033;
   font-weight: 700;
   padding: 5px 9px;
+}
+
+.view-step-button {
+  background: #172033;
+  color: #ffffff;
+  border-color: #172033;
+}
+
+.view-step-button.selected {
+  background: #d7ff64;
+  color: #172033;
+  border-color: #a3e635;
 }
 
 .result-inputs {

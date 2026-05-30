@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Box, CheckCircle2, Clipboard, HelpCircle } from 'lucide-react'
+import { Box, CheckCircle2, Clipboard, HelpCircle, MousePointer2 } from 'lucide-react'
 import { formatDate, readableValue, statusLabel } from '../lib/format'
 import {
   buildStepResults,
@@ -74,6 +74,7 @@ export function RunDetails({
         pendingSteps={pendingSteps}
         stepResults={stepResults}
         statePath={run.statePath}
+        onSelectStep={onSelectStep}
       />
     </div>
   )
@@ -124,6 +125,7 @@ function ResultCollection({
   pendingSteps,
   stepResults,
   statePath,
+  onSelectStep,
 }: {
   stateReady: boolean
   inputs: Record<string, unknown>
@@ -132,14 +134,22 @@ function ResultCollection({
   pendingSteps: string[]
   stepResults: ResultStep[]
   statePath: string
+  onSelectStep: (stepId: string) => void
 }) {
   const [copyFeedback, setCopyFeedback] = useState<{ key: string; status: 'copied' | 'failed' } | null>(null)
+  const [selectedFeedbackStep, setSelectedFeedbackStep] = useState('')
   const inputPairs = Object.entries(inputs)
 
   async function copyResult(text: string, key: string) {
     const copied = await copyText(text)
     setCopyFeedback({ key, status: copied ? 'copied' : 'failed' })
     window.setTimeout(() => setCopyFeedback(null), 1600)
+  }
+
+  function focusStageStep(stepId: string) {
+    onSelectStep(stepId)
+    setSelectedFeedbackStep(stepId)
+    window.setTimeout(() => setSelectedFeedbackStep(''), 1600)
   }
 
   return (
@@ -212,16 +222,28 @@ function ResultCollection({
                     </div>
                   )}
                 </dl>
-                {canCopy && (
-                  <button
-                    className="copy-result-button"
-                    type="button"
-                    onClick={() => void copyResult(copyText, step.id)}
-                  >
-                    {feedback === 'copied' ? <CheckCircle2 size={14} /> : <Clipboard size={14} />}
-                    {feedback === 'copied' ? '已複製' : feedback === 'failed' ? '複製失敗' : '複製'}
-                  </button>
-                )}
+                <div className="result-step-actions">
+                  {step.id && (
+                    <button
+                      className={`view-step-button ${selectedFeedbackStep === step.id ? 'selected' : ''}`}
+                      type="button"
+                      onClick={() => focusStageStep(step.id)}
+                    >
+                      <MousePointer2 size={14} />
+                      {selectedFeedbackStep === step.id ? '已選到舞台積木' : '看這塊積木'}
+                    </button>
+                  )}
+                  {canCopy && (
+                    <button
+                      className="copy-result-button"
+                      type="button"
+                      onClick={() => void copyResult(copyText, step.id)}
+                    >
+                      {feedback === 'copied' ? <CheckCircle2 size={14} /> : <Clipboard size={14} />}
+                      {feedback === 'copied' ? '已複製' : feedback === 'failed' ? '複製失敗' : '複製'}
+                    </button>
+                  )}
+                </div>
               </div>
             </details>
           )

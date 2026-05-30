@@ -4,6 +4,7 @@ import type { ProjectDetail, WizardRunState, WizardRunSummary, WorkflowSummary }
 import { EmptyState } from './EmptyState'
 import { MermaidChart } from './MermaidChart'
 import { RunDetails } from './RunDetails'
+import { RunStartConfirmCard } from './RunStartConfirmCard'
 import { StepLegend } from './StepSummary'
 
 export function RunPanel({
@@ -17,9 +18,12 @@ export function RunPanel({
   selectedRun,
   selectedRunState,
   runGraphSource,
+  runStartConfirm,
   stageStepIds,
   loading,
   onFillRunInputExamples,
+  onCancelRunStartConfirm,
+  onConfirmStartRun,
   onUpdateRunInput,
   onRefreshRuns,
   onSelectRun,
@@ -35,9 +39,12 @@ export function RunPanel({
   selectedRun?: WizardRunSummary
   selectedRunState: WizardRunState | null
   runGraphSource: string
+  runStartConfirm: { missingInputs: string[]; outputs: string[]; stepCount: number } | null
   stageStepIds: string[]
   loading: boolean
   onFillRunInputExamples: () => void
+  onCancelRunStartConfirm: () => void
+  onConfirmStartRun: () => void
   onUpdateRunInput: (inputName: string, value: string) => void
   onRefreshRuns: () => void
   onSelectRun: (runId: string) => void
@@ -84,6 +91,15 @@ export function RunPanel({
               <div className="mini-empty">這條流程沒有輸入欄位，可以直接開始執行。</div>
             )}
           </div>
+        )}
+        {runStartConfirm && (
+          <RunStartConfirmCard
+            missingInputs={runStartConfirm.missingInputs}
+            outputs={runStartConfirm.outputs}
+            stepCount={runStartConfirm.stepCount}
+            onCancel={onCancelRunStartConfirm}
+            onConfirm={onConfirmStartRun}
+          />
         )}
         {runs.length === 0 ? (
           <div className="mini-empty">目前沒有執行紀錄，按「開始執行」。</div>

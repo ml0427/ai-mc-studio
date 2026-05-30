@@ -33,6 +33,7 @@ import type {
   ToastState,
   ValidationResult,
   WizardRunSummary,
+  WorkflowStep,
   WorkflowSummary,
 } from './types/workflow'
 import './App.css'
@@ -43,6 +44,11 @@ function App() {
   const [locatedStepId, setLocatedStepId] = useState('')
   const [graphSource, setGraphSource] = useState('')
   const [runInputValues, setRunInputValues] = useState<Record<string, string>>({})
+  const [runStartConfirm, setRunStartConfirm] = useState<{
+    missingInputs: string[]
+    outputs: string[]
+    stepCount: number
+  } | null>(null)
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null)
   const [toast, setToast] = useState<ToastState | null>(null)
   const [showAdvancedEditor, setShowAdvancedEditor] = useState(false)
@@ -164,14 +170,37 @@ function App() {
     return () => window.clearTimeout(timeoutId)
   }, [project, selectedWorkflow])
 
-  async function startRun() {
-    if (!project || !selectedWorkflowSummary) return
-    const inputs: Record<string, string> = {}
-    const missingInputs = selectedWorkflowSummary.requiredInputs.filter(
+  function runMissingInputs() {
+    if (!selectedWorkflowSummary) return []
+    return selectedWorkflowSummary.requiredInputs.filter(
       (inputName) => !runInputValues[inputName]?.trim(),
     )
+  }
+
+  function openRunStartConfirm() {
+    if (!project || !selectedWorkflowSummary) return
+    const missingInputs = runMissingInputs()
+    setRunStartConfirm({
+      missingInputs,
+      outputs: runOutputNames(steps),
+      stepCount: steps.length || selectedWorkflowSummary.stepCount,
+    })
+    if (missingInputs.length > 0) {
+      setToast({ tone: 'error', message: `先補資料：${missingInputs.join('、')}` })
+    }
+  }
+
+  async function confirmStartRun() {
+    if (!project || !selectedWorkflowSummary) return
+    const inputs: Record<string, string> = {}
+    const missingInputs = runMissingInputs()
 
     if (missingInputs.length > 0) {
+      setRunStartConfirm({
+        missingInputs,
+        outputs: runOutputNames(steps),
+        stepCount: steps.length || selectedWorkflowSummary.stepCount,
+      })
       setToast({ tone: 'error', message: `缺少必要輸入：${missingInputs.join(', ')}` })
       return
     }
@@ -193,6 +222,7 @@ function App() {
           body: JSON.stringify({ workflow: selectedWorkflow, inputs }),
         },
       )
+      setRunStartConfirm(null)
       setToast({ tone: 'ok', message: `已建立 run：${result.runId ?? selectedWorkflow}` })
       await loadRuns(project.id, result.runId)
     } catch (error) {
@@ -262,6 +292,7 @@ function App() {
       ? workflowName
       : targetProject.workflows[0]?.name ?? ''
     const nextSummary = targetProject.workflows.find((item) => item.name === nextWorkflow)
+    setRunStartConfirm(null)
     setSelectedWorkflow(nextWorkflow)
     setSelectedStepId(targetProject.spec.workflows?.[nextWorkflow]?.steps?.[0]?.id ?? '')
     setRunInputValues(seedRunInputs(nextSummary))
@@ -270,6 +301,7 @@ function App() {
   function selectProject(projectId: string) {
     if (projectId === selectedProjectId) return
     const canSwitch = !isDirty || window.confirm('目前 workflow.yaml 尚未儲存，確定要切換專案？')
+    if (canSwitch) setRunStartConfirm(null)
     requestProjectSelection(projectId, canSwitch)
   }
 
@@ -285,6 +317,7 @@ function App() {
   }
 
   function updateRunInput(inputName: string, value: string) {
+    setRunStartConfirm(null)
     setRunInputValues((current) => ({
       ...current,
       [inputName]: value,
@@ -293,6 +326,7 @@ function App() {
 
   function fillRunInputExamples() {
     if (!selectedWorkflowSummary?.inputExamples) return
+    setRunStartConfirm(null)
     setRunInputValues((current) => {
       const next = { ...current }
       for (const inputName of [
@@ -333,7 +367,7 @@ function App() {
           isDirty={isDirty}
           canUndoEditor={canUndoEditor}
           onValidateProject={validateProject}
-          onStartRun={startRun}
+          onStartRun={openRunStartConfirm}
           onUndoEditor={undoEditorValue}
           onSaveWorkflow={saveWorkflow}
         />
@@ -454,9 +488,12 @@ function App() {
           selectedRun={selectedRun}
           selectedRunState={selectedRunState}
           runGraphSource={runGraphSource}
+          runStartConfirm={runStartConfirm}
           stageStepIds={steps.map((step) => step.id)}
           loading={loading}
           onFillRunInputExamples={fillRunInputExamples}
+          onCancelRunStartConfirm={() => setRunStartConfirm(null)}
+          onConfirmStartRun={() => void confirmStartRun()}
           onUpdateRunInput={updateRunInput}
           onRefreshRuns={refreshRuns}
           onSelectRun={selectRun}
@@ -487,6 +524,15 @@ function seedRunInputs(summary?: WorkflowSummary): Record<string, string> {
   }
 
   return next
+}
+
+function runOutputNames(steps: WorkflowStep[]): string[] {
+  const outputs = new Set<string>()
+  for (const step of steps) {
+    const output = step.output?.trim()
+    if (output) outputs.add(output)
+  }
+  return Array.from(outputs)
 }
 
 export default App

@@ -1,31 +1,30 @@
-import { useCallback, useEffect, useMemo, useState, type DragEvent } from 'react'
+import { useEffect, useMemo, useState, type DragEvent } from 'react'
 import {
   AlertTriangle,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   FileCode2,
-  GitBranch,
   RotateCcw,
   Undo2,
   Workflow,
 } from 'lucide-react'
 import { api } from './api/studioApi'
-import { STEP_TEMPLATES, stepTypeMeta } from './data/stepTemplates'
-import { BlockToolbox } from './components/BlockToolbox'
+import { STEP_TEMPLATES } from './data/stepTemplates'
 import { EmptyState } from './components/EmptyState'
 import { MermaidChart } from './components/MermaidChart'
 import { ProjectRail } from './components/ProjectRail'
 import { RunPanel } from './components/RunPanel'
 import { StageBlocks } from './components/StageBlocks'
 import { StarterGuide } from './components/StarterGuide'
-import { StepSpecificFields } from './components/StepSpecificFields'
-import { SelectedStepSummary, StepLegend } from './components/StepSummary'
+import { StepInspector } from './components/StepInspector'
+import { StepLegend } from './components/StepSummary'
 import { WorkbenchHeader } from './components/WorkbenchHeader'
+import { WorkflowPanel } from './components/WorkflowPanel'
+import { useRuns } from './hooks/useRuns'
 import { useWorkflowEditor } from './hooks/useWorkflowEditor'
 import { buildClientMermaid } from './lib/workflowYaml'
 import {
-  countLabel,
   friendlyErrorMessage,
 } from './lib/format'
 import type {
@@ -33,7 +32,6 @@ import type {
   ProjectSummary,
   ToastState,
   ValidationResult,
-  WizardRunState,
   WizardRunSummary,
   WorkflowSummary,
 } from './types/workflow'
@@ -49,15 +47,24 @@ function App() {
   const [selectedWorkflow, setSelectedWorkflow] = useState('')
   const [selectedStepId, setSelectedStepId] = useState('')
   const [graphSource, setGraphSource] = useState('')
-  const [runs, setRuns] = useState<WizardRunSummary[]>([])
-  const [selectedRunId, setSelectedRunId] = useState('')
-  const [runGraphSource, setRunGraphSource] = useState('')
-  const [selectedRunState, setSelectedRunState] = useState<WizardRunState | null>(null)
   const [runInputValues, setRunInputValues] = useState<Record<string, string>>({})
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null)
   const [toast, setToast] = useState<ToastState | null>(null)
   const [loading, setLoading] = useState(false)
   const [showAdvancedEditor, setShowAdvancedEditor] = useState(false)
+  const {
+    runs,
+    selectedRunId,
+    selectedRun,
+    selectedRunState,
+    runGraphSource,
+    loadRuns,
+    refreshRuns,
+    selectRun,
+  } = useRuns({
+    project,
+    setToast,
+  })
   const {
     editorValue,
     editorUndoStack,
@@ -84,7 +91,6 @@ function App() {
     setToast,
   })
   const selectedWorkflowSummary = project?.workflows.find((item) => item.name === selectedWorkflow)
-  const selectedRun = runs.find((run) => run.runId === selectedRunId)
   const hasRunInputExamples = Boolean(
     selectedWorkflowSummary?.inputExamples
     && Object.keys(selectedWorkflowSummary.inputExamples).length > 0,
@@ -102,58 +108,6 @@ function App() {
   const displayedWorkflowGraph = isDirty && workflow && selectedWorkflow
     ? buildClientMermaid(selectedWorkflow, workflow)
     : graphSource
-
-  const loadRunGraph = useCallback(async (projectId: string, runId: string) => {
-    try {
-      const response = await fetch(`/api/projects/${projectId}/runs/${encodeURIComponent(runId)}/graph`)
-      if (!response.ok) throw new Error(await response.text())
-      setRunGraphSource(await response.text())
-    } catch (error) {
-      setRunGraphSource('')
-      setToast({ tone: 'error', message: friendlyErrorMessage(error) })
-    }
-  }, [])
-
-  const loadRunState = useCallback(async (projectId: string, runId: string) => {
-    try {
-      setSelectedRunState(await api<WizardRunState>(`/api/projects/${projectId}/runs/${encodeURIComponent(runId)}`))
-    } catch (error) {
-      setSelectedRunState(null)
-      setToast({ tone: 'error', message: friendlyErrorMessage(error) })
-    }
-  }, [])
-
-  const loadRuns = useCallback(async (
-    projectId: string,
-    preferredRunId = '',
-    options: { quiet?: boolean } = {},
-  ) => {
-    try {
-      const data = await api<{ runs: WizardRunSummary[] }>(`/api/projects/${projectId}/runs`)
-      const wanted = preferredRunId
-      const nextRunId = data.runs.some((run) => run.runId === wanted)
-        ? wanted
-        : data.runs[0]?.runId || ''
-      setRuns(data.runs)
-      if (data.runs.length === 0) {
-        setRunGraphSource('')
-        setSelectedRunState(null)
-      }
-      setSelectedRunId(nextRunId)
-      if (nextRunId) {
-        await Promise.all([
-          loadRunGraph(projectId, nextRunId),
-          loadRunState(projectId, nextRunId),
-        ])
-      }
-    } catch (error) {
-      setRuns([])
-      setSelectedRunId('')
-      setRunGraphSource('')
-      setSelectedRunState(null)
-      if (!options.quiet) setToast({ tone: 'error', message: friendlyErrorMessage(error) })
-    }
-  }, [loadRunGraph, loadRunState])
 
   useEffect(() => {
     void loadProjects()
@@ -187,7 +141,6 @@ function App() {
         setProject(detail)
         selectWorkflow(detail, detail.workflows[0]?.name ?? '')
         resetEditorHistory(detail.rawYaml)
-        await loadRuns(detail.id)
       } catch (error) {
         if (!cancelled) setToast({ tone: 'error', message: friendlyErrorMessage(error) })
       } finally {
@@ -200,20 +153,12 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [loadRuns, resetEditorHistory, selectedProjectId])
+  }, [resetEditorHistory, selectedProjectId])
 
   useEffect(() => {
     if (!project || !selectedWorkflow) return
     void loadGraph(project.id, selectedWorkflow)
   }, [project, selectedWorkflow])
-
-  useEffect(() => {
-    if (!project) return
-    const intervalId = window.setInterval(() => {
-      void loadRuns(project.id, selectedRunId, { quiet: true })
-    }, 5000)
-    return () => window.clearInterval(intervalId)
-  }, [loadRuns, project, selectedRunId])
 
   useEffect(() => {
     function confirmLeave(event: BeforeUnloadEvent) {
@@ -282,8 +227,6 @@ function App() {
           body: JSON.stringify({ workflow: selectedWorkflow, inputs }),
         },
       )
-      setRuns(result.runs)
-      setSelectedRunId(result.runId ?? result.runs[0]?.runId ?? '')
       setToast({ tone: 'ok', message: `已建立 run：${result.runId ?? selectedWorkflow}` })
       await loadRuns(project.id, result.runId)
     } catch (error) {
@@ -386,14 +329,6 @@ function App() {
     })
   }
 
-  function selectRun(runId: string) {
-    setSelectedRunId(runId)
-    if (project) {
-      void loadRunGraph(project.id, runId)
-      void loadRunState(project.id, runId)
-    }
-  }
-
   function handleStageDrop(event: DragEvent<HTMLElement>) {
     event.preventDefault()
     const type = event.dataTransfer.getData('application/x-step-type')
@@ -441,24 +376,12 @@ function App() {
         )}
 
         <div className="studio-grid">
-          <nav className="workflow-panel block-toolbox" aria-label="流程和積木工具箱">
-            <div className="panel-title">
-              <GitBranch size={16} />
-              流程
-            </div>
-            {project?.workflows.map((item) => (
-              <button
-                className={`workflow-row ${item.name === selectedWorkflow ? 'active' : ''}`}
-                key={item.name}
-                type="button"
-                onClick={() => project && selectWorkflow(project, item.name)}
-              >
-                <strong>{item.name}</strong>
-                <span>{countLabel(item.stepCount, '個步驟')} · {countLabel(item.gateCount, '個檢查點')}</span>
-              </button>
-            ))}
-            <BlockToolbox onAddStep={addStepFromTemplate} />
-          </nav>
+          <WorkflowPanel
+            project={project}
+            selectedWorkflow={selectedWorkflow}
+            onSelectWorkflow={(workflowName) => project && selectWorkflow(project, workflowName)}
+            onAddStep={addStepFromTemplate}
+          />
 
           <section
             className="graph-panel stage-panel"
@@ -489,78 +412,15 @@ function App() {
             />
           </section>
 
-          <aside className="inspector-panel">
-            <div className="panel-title">
-              <FileCode2 size={16} />
-              步驟設定
-            </div>
-            <div className="step-stack">
-              {steps.map((step) => (
-                <button
-                  className={`step-row ${step.id === selectedStep?.id ? 'active' : ''}`}
-                  key={step.id}
-                  type="button"
-                  onClick={() => setSelectedStepId(step.id)}
-                >
-                  <span>{step.id}</span>
-                  <small>{stepTypeMeta(step.type).label}</small>
-                </button>
-              ))}
-            </div>
-            {selectedStep && (
-              <div className="step-facts">
-                <span>{stepTypeMeta(selectedStep.type).label}</span>
-                {selectedStep.when && <span>條件</span>}
-                {selectedStep.command_ref && <span>{selectedStep.command_ref}</span>}
-                {selectedStep.output && <span>輸出：{selectedStep.output}</span>}
-                {selectedStep.blocks_downstream && <span>會阻擋後續</span>}
-              </div>
-            )}
-            {selectedStep && (
-              <div className={`step-editor block-card ${stepTypeMeta(selectedStep.type).className}`}>
-                <div className="block-card-header">
-                  <span>{stepTypeMeta(selectedStep.type).label}</span>
-                  <small>{stepTypeMeta(selectedStep.type).hint}</small>
-                </div>
-                <label>
-                  <span>這一步要做什麼</span>
-                  <select
-                    value={selectedStep.type}
-                    onChange={(event) => updateSelectedStep('type', event.target.value)}
-                  >
-                    <option value="ai">{stepTypeMeta('ai').label} · ai</option>
-                    <option value="shell">{stepTypeMeta('shell').label} · shell</option>
-                    <option value="tool-or-shell">{stepTypeMeta('tool-or-shell').label} · tool-or-shell</option>
-                    <option value="tool-or-code-edit">{stepTypeMeta('tool-or-code-edit').label} · tool-or-code-edit</option>
-                    <option value="file">{stepTypeMeta('file').label} · file</option>
-                    <option value="code-edit">{stepTypeMeta('code-edit').label} · code-edit</option>
-                  </select>
-                </label>
-                <label>
-                  <span>什麼時候做</span>
-                  <input
-                    value={selectedStep.when ?? ''}
-                    onChange={(event) => updateSelectedStep('when', event.target.value)}
-                    placeholder="always"
-                  />
-                </label>
-                <label>
-                  <span>完成後叫什麼名字</span>
-                  <input
-                    value={selectedStep.output ?? ''}
-                    onChange={(event) => updateSelectedStep('output', event.target.value)}
-                    placeholder={selectedStep.id}
-                  />
-                </label>
-                <StepSpecificFields
-                  step={selectedStep}
-                  workflow={workflow}
-                  onPatchStep={updateSelectedStepPatch}
-                />
-              </div>
-            )}
-            <SelectedStepSummary step={selectedStep} error={editorSpec.error} />
-          </aside>
+          <StepInspector
+            steps={steps}
+            selectedStep={selectedStep}
+            workflow={workflow}
+            error={editorSpec.error}
+            onSelectStep={setSelectedStepId}
+            onUpdateStep={updateSelectedStep}
+            onPatchStep={updateSelectedStepPatch}
+          />
         </div>
 
         <section className={`editor-panel advanced-panel ${showAdvancedEditor ? 'open' : ''}`}>
@@ -619,7 +479,7 @@ function App() {
           loading={loading}
           onFillRunInputExamples={fillRunInputExamples}
           onUpdateRunInput={updateRunInput}
-          onRefreshRuns={() => project && loadRuns(project.id, selectedRunId)}
+          onRefreshRuns={refreshRuns}
           onSelectRun={selectRun}
           onSelectStep={setSelectedStepId}
         />

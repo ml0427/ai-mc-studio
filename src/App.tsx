@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type DragEvent } from 'react'
+import { useEffect, useState } from 'react'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -7,25 +7,17 @@ import {
   FileCode2,
   RotateCcw,
   Undo2,
-  Workflow,
 } from 'lucide-react'
 import { api } from './api/studioApi'
-import { STEP_TEMPLATES } from './data/stepTemplates'
-import { EmptyState } from './components/EmptyState'
-import { MermaidChart } from './components/MermaidChart'
+import { FlowCanvas } from './components/FlowCanvas'
 import { ProjectRail } from './components/ProjectRail'
 import { RunPanel } from './components/RunPanel'
-import { StageBlocks } from './components/StageBlocks'
-import { StarterGuide } from './components/StarterGuide'
 import { StepInspector } from './components/StepInspector'
-import { StepLegend } from './components/StepSummary'
 import { TaskLaunchPanel } from './components/TaskLaunchPanel'
 import { WorkbenchHeader } from './components/WorkbenchHeader'
-import { WorkflowPanel } from './components/WorkflowPanel'
 import { useProjects } from './hooks/useProjects'
 import { useRuns } from './hooks/useRuns'
 import { useWorkflowEditor } from './hooks/useWorkflowEditor'
-import { buildClientMermaid } from './lib/workflowYaml'
 import {
   friendlyErrorMessage,
 } from './lib/format'
@@ -42,8 +34,6 @@ import './App.css'
 function App() {
   const [selectedWorkflow, setSelectedWorkflow] = useState('')
   const [selectedStepId, setSelectedStepId] = useState('')
-  const [locatedStepId, setLocatedStepId] = useState('')
-  const [graphSource, setGraphSource] = useState('')
   const [runInputValues, setRunInputValues] = useState<Record<string, string>>({})
   const [runStartConfirm, setRunStartConfirm] = useState<{
     missingInputs: string[]
@@ -53,7 +43,7 @@ function App() {
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null)
   const [toast, setToast] = useState<ToastState | null>(null)
   const [showAdvancedEditor, setShowAdvancedEditor] = useState(false)
-  const locatedStepTimerRef = useRef<number | null>(null)
+  const [showLegacyRunTools, setShowLegacyRunTools] = useState(false)
   const {
     projectsRoot,
     scanDepth,
@@ -102,9 +92,6 @@ function App() {
     updateSelectedStep,
     updateSelectedStepPatch,
     addStepFromTemplate,
-    reorderStep,
-    duplicateStep,
-    deleteStep,
   } = useWorkflowEditor({
     project,
     selectedWorkflow,
@@ -117,9 +104,6 @@ function App() {
     selectedWorkflowSummary?.inputExamples
     && Object.keys(selectedWorkflowSummary.inputExamples).length > 0,
   )
-  const displayedWorkflowGraph = isDirty && workflow && selectedWorkflow
-    ? buildClientMermaid(selectedWorkflow, workflow)
-    : graphSource
 
   useEffect(() => {
     function handleUndo(event: KeyboardEvent) {
@@ -137,10 +121,6 @@ function App() {
     return () => window.removeEventListener('keydown', handleUndo)
   }, [editorUndoStack.length, undoEditorValue])
 
-  useEffect(() => () => {
-    if (locatedStepTimerRef.current) window.clearTimeout(locatedStepTimerRef.current)
-  }, [])
-
   useEffect(() => {
     function confirmLeave(event: BeforeUnloadEvent) {
       if (!isDirty) return
@@ -151,25 +131,6 @@ function App() {
     window.addEventListener('beforeunload', confirmLeave)
     return () => window.removeEventListener('beforeunload', confirmLeave)
   }, [isDirty])
-
-  async function loadGraph(projectId: string, workflowName: string) {
-    try {
-      const response = await fetch(`/api/projects/${projectId}/workflows/${encodeURIComponent(workflowName)}/graph`)
-      if (!response.ok) throw new Error(await response.text())
-      setGraphSource(await response.text())
-    } catch (error) {
-      setGraphSource('')
-      setToast({ tone: 'error', message: friendlyErrorMessage(error) })
-    }
-  }
-
-  useEffect(() => {
-    if (!project || !selectedWorkflow) return undefined
-    const timeoutId = window.setTimeout(() => {
-      void loadGraph(project.id, selectedWorkflow)
-    }, 0)
-    return () => window.clearTimeout(timeoutId)
-  }, [project, selectedWorkflow])
 
   function runMissingInputs() {
     if (!selectedWorkflowSummary) return []
@@ -309,12 +270,6 @@ function App() {
   function locateStepOnStage(stepId: string) {
     if (!stepId) return
     setSelectedStepId(stepId)
-    setLocatedStepId(stepId)
-    if (locatedStepTimerRef.current) window.clearTimeout(locatedStepTimerRef.current)
-    locatedStepTimerRef.current = window.setTimeout(() => {
-      setLocatedStepId('')
-      locatedStepTimerRef.current = null
-    }, 1600)
   }
 
   function updateRunInput(inputName: string, value: string) {
@@ -341,13 +296,6 @@ function App() {
     })
   }
 
-  function handleStageDrop(event: DragEvent<HTMLElement>) {
-    event.preventDefault()
-    const type = event.dataTransfer.getData('application/x-step-type')
-    const template = STEP_TEMPLATES.find((item) => item.type === type)
-    if (template) addStepFromTemplate(template)
-  }
-
   return (
     <main className="studio-shell">
       <ProjectRail
@@ -368,30 +316,12 @@ function App() {
           isDirty={isDirty}
           canUndoEditor={canUndoEditor}
           onValidateProject={validateProject}
-          onStartRun={openRunStartConfirm}
+          onStartRun={() => {
+            setShowLegacyRunTools(true)
+            openRunStartConfirm()
+          }}
           onUndoEditor={undoEditorValue}
           onSaveWorkflow={saveWorkflow}
-        />
-
-        <StarterGuide
-          project={project}
-          selectedWorkflow={selectedWorkflow}
-          selectedRun={selectedRun}
-          requiredInputCount={selectedWorkflowSummary?.requiredInputs.length ?? 0}
-        />
-
-        <TaskLaunchPanel
-          selectedWorkflow={selectedWorkflow}
-          selectedWorkflowSummary={selectedWorkflowSummary}
-          hasRunInputExamples={hasRunInputExamples}
-          runInputValues={runInputValues}
-          runStartConfirm={runStartConfirm}
-          steps={steps}
-          onFillRunInputExamples={fillRunInputExamples}
-          onOpenRunStartConfirm={openRunStartConfirm}
-          onCancelRunStartConfirm={() => setRunStartConfirm(null)}
-          onConfirmStartRun={() => void confirmStartRun()}
-          onUpdateRunInput={updateRunInput}
         />
 
         {toast && (
@@ -401,54 +331,62 @@ function App() {
           </div>
         )}
 
-        <div className="studio-grid">
-          <WorkflowPanel
-            project={project}
-            selectedWorkflow={selectedWorkflow}
-            onSelectWorkflow={(workflowName) => project && selectWorkflow(project, workflowName)}
-            onAddStep={addStepFromTemplate}
-          />
-
-          <section
-            className="graph-panel stage-panel"
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={handleStageDrop}
-          >
-            <div className="panel-title">
-              <Workflow size={16} />
-              舞台
-              {isDirty && <span className="title-note dirty">草稿預覽</span>}
-            </div>
-            <StepLegend />
-            {displayedWorkflowGraph ? (
-              <MermaidChart
-                chart={displayedWorkflowGraph}
-                steps={steps}
-                selectedStepId={selectedStep?.id}
-                onSelectStep={setSelectedStepId}
-              />
-            ) : <EmptyState loading={loading} />}
-            <StageBlocks
+        <FlowCanvas
+          key={`${project?.id ?? 'no-project'}:${selectedWorkflow}`}
+          project={project}
+          selectedWorkflow={selectedWorkflow}
+          selectedStepId={selectedStep?.id}
+          steps={steps}
+          loading={loading}
+          onSelectWorkflow={(workflowName) => project && selectWorkflow(project, workflowName)}
+          onSelectStep={setSelectedStepId}
+          onAddStep={addStepFromTemplate}
+          inspector={(
+            <StepInspector
               steps={steps}
-              selectedStepId={selectedStep?.id}
-              locatedStepId={locatedStepId}
+              selectedStep={selectedStep}
+              workflow={workflow}
+              error={editorSpec.error}
               onSelectStep={setSelectedStepId}
-              onReorderStep={reorderStep}
-              onDuplicateStep={duplicateStep}
-              onDeleteStep={deleteStep}
+              onUpdateStep={updateSelectedStep}
+              onPatchStep={updateSelectedStepPatch}
             />
-          </section>
+          )}
+        />
 
-          <StepInspector
+        <details
+          className="legacy-run-details"
+          open={showLegacyRunTools}
+          onToggle={(event) => setShowLegacyRunTools(event.currentTarget.open)}
+        >
+          <summary>開始任務與執行紀錄</summary>
+          <TaskLaunchPanel
+            selectedWorkflow={selectedWorkflow}
+            selectedWorkflowSummary={selectedWorkflowSummary}
+            hasRunInputExamples={hasRunInputExamples}
+            runInputValues={runInputValues}
+            runStartConfirm={runStartConfirm}
             steps={steps}
-            selectedStep={selectedStep}
-            workflow={workflow}
-            error={editorSpec.error}
-            onSelectStep={setSelectedStepId}
-            onUpdateStep={updateSelectedStep}
-            onPatchStep={updateSelectedStepPatch}
+            onFillRunInputExamples={fillRunInputExamples}
+            onOpenRunStartConfirm={openRunStartConfirm}
+            onCancelRunStartConfirm={() => setRunStartConfirm(null)}
+            onConfirmStartRun={() => void confirmStartRun()}
+            onUpdateRunInput={updateRunInput}
           />
-        </div>
+          <RunPanel
+            project={project}
+            runs={runs}
+            selectedRunId={selectedRunId}
+            selectedRun={selectedRun}
+            selectedRunState={selectedRunState}
+            runGraphSource={runGraphSource}
+            stageStepIds={steps.map((step) => step.id)}
+            loading={loading}
+            onRefreshRuns={refreshRuns}
+            onSelectRun={selectRun}
+            onSelectStep={locateStepOnStage}
+          />
+        </details>
 
         <section className={`editor-panel advanced-panel ${showAdvancedEditor ? 'open' : ''}`}>
           <button
@@ -492,19 +430,6 @@ function App() {
           )}
         </section>
 
-        <RunPanel
-          project={project}
-          runs={runs}
-          selectedRunId={selectedRunId}
-          selectedRun={selectedRun}
-          selectedRunState={selectedRunState}
-          runGraphSource={runGraphSource}
-          stageStepIds={steps.map((step) => step.id)}
-          loading={loading}
-          onRefreshRuns={refreshRuns}
-          onSelectRun={selectRun}
-          onSelectStep={locateStepOnStage}
-        />
       </section>
     </main>
   )

@@ -81,7 +81,7 @@ export function useWorkflowEditor({
     commitEditorValue(YAML.stringify(parsed.spec))
   }
 
-  function addStepFromTemplate(template: StepTemplate) {
+  function addStepFromTemplate(template: StepTemplate, options: { afterStepId?: string; when?: string } = {}) {
     const parsed = parseWorkflowSpec(editorValue, null)
     if (!parsed.spec || !selectedWorkflow) {
       setToast({ tone: 'error', message: parsed.error ?? '目前還沒有可以加入積木的流程' })
@@ -101,7 +101,18 @@ export function useWorkflowEditor({
       type: template.type,
       output: nextId,
     }
-    targetWorkflow.steps = [...currentSteps, nextStep]
+    if (options.when?.trim()) nextStep.when = options.when.trim()
+    const afterIndex = options.afterStepId && options.afterStepId !== '__entry__'
+      ? currentSteps.findIndex((step) => step.id === options.afterStepId)
+      : currentSteps.length - 1
+    const insertIndex = options.afterStepId === '__entry__'
+      ? 0
+      : afterIndex >= 0 ? afterIndex + 1 : currentSteps.length
+    targetWorkflow.steps = [
+      ...currentSteps.slice(0, insertIndex),
+      nextStep,
+      ...currentSteps.slice(insertIndex),
+    ]
     commitEditorValue(YAML.stringify(parsed.spec))
     setSelectedStepId(nextId)
     setToast({ tone: 'info', message: `已加入積木：${template.label}` })

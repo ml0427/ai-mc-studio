@@ -1,5 +1,6 @@
 @import './styles/runPanel.css';
 @import './styles/taskLaunch.css';
+@import './styles/flowCanvas.css';
 
 .studio-shell {
   min-height: 100vh;

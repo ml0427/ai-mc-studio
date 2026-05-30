@@ -538,6 +538,7 @@ h1 {
 .stage-block {
   --block-color: #64748b;
   flex: 1 1 150px;
+  position: relative;
   min-width: 0;
   max-width: 220px;
   border: 1px solid color-mix(in srgb, var(--block-color) 45%, #ffffff);
@@ -548,6 +549,15 @@ h1 {
   text-align: left;
   padding: 8px;
   cursor: pointer;
+}
+
+.stage-block:focus-visible {
+  outline: 3px solid #d7ff64;
+  outline-offset: 2px;
+}
+
+.stage-block:hover {
+  border-color: #101418;
 }
 
 .stage-block.active {
@@ -586,6 +596,37 @@ h1 {
   margin-top: 2px;
   color: #59616d;
   font-size: 12px;
+}
+
+.stage-block-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.stage-block-actions button {
+  width: 26px;
+  height: 26px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #172033;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  cursor: pointer;
+}
+
+.stage-block-actions button:hover,
+.stage-block-actions button:focus-visible {
+  border-color: #101418;
+  background: #ffffff;
+}
+
+.stage-block-actions button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
 }
 
 .step-legend {
@@ -761,7 +802,8 @@ h1 {
 }
 
 .step-editor input,
-.step-editor select {
+.step-editor select,
+.step-specific-fields textarea {
   width: 100%;
   min-width: 0;
   border: 1px solid #cbd5e1;
@@ -771,6 +813,48 @@ h1 {
   padding: 7px 8px;
   font: inherit;
   font-size: 13px;
+}
+
+.step-specific-fields {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 8px;
+}
+
+.step-specific-fields textarea {
+  min-height: 78px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.step-specific-fields .inline-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.step-specific-fields .inline-check input {
+  width: auto;
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.step-specific-fields .inline-check span {
+  text-transform: none;
+  letter-spacing: 0;
+  color: #374151;
+  line-height: 1.35;
+}
+
+.field-help {
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #4b5563;
+  padding: 8px;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .yaml-view {
@@ -959,6 +1043,60 @@ h1 {
   border-radius: 7px;
   background: #f7f7f2;
   padding: 10px;
+}
+
+.run-hint-card {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #cbd5e1;
+  border-left: 7px solid #64748b;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #172033;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-bottom: 10px;
+  padding: 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.run-hint-card:disabled {
+  cursor: default;
+}
+
+.run-hint-card.running {
+  border-left-color: #16a34a;
+}
+
+.run-hint-card.blocked {
+  border-left-color: #f97316;
+}
+
+.run-hint-card.failed {
+  border-left-color: #ef4444;
+}
+
+.run-hint-card.completed {
+  border-left-color: #5b6ee1;
+}
+
+.run-hint-card span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.run-hint-card strong,
+.run-hint-card small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.run-hint-card small {
+  color: #59616d;
+  font-size: 12px;
 }
 
 .run-progress {

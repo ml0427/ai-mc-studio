@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import {
   AlertTriangle,
-  Box,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -18,145 +17,36 @@ import {
   Workflow,
 } from 'lucide-react'
 import YAML from 'yaml'
+import { api } from './api/studioApi'
+import { STEP_TEMPLATES, stepTypeMeta, uniqueStepId } from './data/stepTemplates'
+import { BlockToolbox } from './components/BlockToolbox'
+import { EmptyState } from './components/EmptyState'
+import { MermaidChart } from './components/MermaidChart'
+import { RunDetails } from './components/RunDetails'
+import { StageBlocks } from './components/StageBlocks'
+import { StarterGuide } from './components/StarterGuide'
+import { StepSpecificFields } from './components/StepSpecificFields'
+import { SelectedStepSummary, StepLegend } from './components/StepSummary'
+import { buildClientMermaid, parseWorkflowSpec } from './lib/workflowYaml'
+import {
+  countLabel,
+  formatDate,
+  friendlyErrorMessage,
+  inputPlaceholder,
+  statusLabel,
+} from './lib/format'
+import type {
+  ProjectDetail,
+  ProjectSummary,
+  StepTemplate,
+  ToastState,
+  ValidationResult,
+  WizardRunState,
+  WizardRunSummary,
+  WorkflowStep,
+  WorkflowSummary,
+} from './types/workflow'
 import './App.css'
-
-type WorkflowStep = {
-  id: string
-  type: string
-  when?: string
-  output?: string
-  output_schema?: unknown
-  command_ref?: string
-  commands?: string[]
-  delegate?: string
-  task_class?: string
-  blocks_downstream?: boolean
-}
-
-type WorkflowDefinition = {
-  description?: string
-  steps?: WorkflowStep[]
-  gates?: unknown
-  evidence?: unknown
-}
-
-type WorkflowSpec = {
-  schema_version?: string
-  name?: string
-  description?: string
-  workflows?: Record<string, WorkflowDefinition>
-}
-
-type WorkflowSummary = {
-  name: string
-  description: string
-  stepCount: number
-  requiredInputs: string[]
-  optionalInputs: string[]
-  inputExamples?: Record<string, string>
-  gateCount: number
-}
-
-type StepTemplate = {
-  type: string
-  label: string
-  hint: string
-  outputPrefix: string
-}
-
-type ProjectSummary = {
-  id: string
-  name: string
-  rootPath: string
-  workflowPath: string
-  workflowCount: number
-  stepCount: number
-  runCount: number
-  latestRun?: WizardRunSummary
-  workflows: WorkflowSummary[]
-  scannedAt: string
-}
-
-type ProjectDetail = ProjectSummary & {
-  spec: WorkflowSpec
-  rawYaml: string
-  rawHash: string
-}
-
-type ToastState = {
-  tone: 'ok' | 'error' | 'info'
-  message: string
-}
-
-type ValidationResult = {
-  tone: 'ok' | 'error'
-  title: string
-  output: string
-}
-
-type WizardRunSummary = {
-  runId: string
-  workflow: string
-  status: string
-  currentStep: string | null
-  completedCount: number
-  skippedCount: number
-  totalSteps: number
-  updatedAt: string
-  statePath: string
-}
-
-type WizardRunState = {
-  run_id?: string
-  workflow?: string
-  status?: string
-  current_step?: string | null
-  completed_steps?: unknown[]
-  skipped_steps?: unknown[]
-  steps?: unknown[]
-  created_at?: string
-  updated_at?: string
-  inputs?: Record<string, unknown>
-}
-
-const STEP_TEMPLATES: StepTemplate[] = [
-  {
-    type: 'ai',
-    label: '請 AI 想一想',
-    hint: '整理想法、做判斷、寫說明',
-    outputPrefix: 'ai_step',
-  },
-  {
-    type: 'shell',
-    label: '請電腦執行指令',
-    hint: '跑測試、建置、查狀態',
-    outputPrefix: 'run_command',
-  },
-  {
-    type: 'tool-or-shell',
-    label: '用工具或指令',
-    hint: '先試工具，不行再跑指令',
-    outputPrefix: 'tool_step',
-  },
-  {
-    type: 'tool-or-code-edit',
-    label: '用工具或改檔案',
-    hint: '讓 AI 做一段清楚改動',
-    outputPrefix: 'edit_with_tool',
-  },
-  {
-    type: 'code-edit',
-    label: '修改程式',
-    hint: '真的動到程式碼',
-    outputPrefix: 'code_change',
-  },
-  {
-    type: 'file',
-    label: '讀寫檔案',
-    hint: '產生或檢查檔案',
-    outputPrefix: 'file_step',
-  },
-]
 
 function App() {
   const [projects, setProjects] = useState<ProjectSummary[]>([])
@@ -528,6 +418,16 @@ function App() {
   }
 
   function updateSelectedStep(field: 'type' | 'when' | 'output', value: string) {
+    updateSelectedStepPatch((step) => {
+      if (value.trim()) {
+        step[field] = value
+      } else if (field !== 'type') {
+        delete step[field]
+      }
+    })
+  }
+
+  function updateSelectedStepPatch(updater: (step: WorkflowStep) => void) {
     const parsed = parseWorkflowSpec(editorValue, null)
     if (!parsed.spec || !selectedWorkflow || !selectedStep?.id) {
       setToast({ tone: 'error', message: parsed.error ?? 'workflow.yaml 目前無法解析' })
@@ -537,12 +437,7 @@ function App() {
     const step = parsed.spec.workflows?.[selectedWorkflow]?.steps?.find((item) => item.id === selectedStep.id)
     if (!step) return
 
-    if (value.trim()) {
-      step[field] = value
-    } else if (field !== 'type') {
-      delete step[field]
-    }
-
+    updater(step)
     commitEditorValue(YAML.stringify(parsed.spec))
   }
 
@@ -577,6 +472,63 @@ function App() {
     const type = event.dataTransfer.getData('application/x-step-type')
     const template = STEP_TEMPLATES.find((item) => item.type === type)
     if (template) addStepFromTemplate(template)
+  }
+
+  function reorderStep(fromIndex: number, toIndex: number) {
+    const parsed = parseWorkflowSpec(editorValue, null)
+    const targetSteps = selectedWorkflow ? parsed.spec?.workflows?.[selectedWorkflow]?.steps : null
+    if (!parsed.spec || !targetSteps || fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return
+    if (fromIndex >= targetSteps.length || toIndex >= targetSteps.length) return
+
+    const nextSteps = [...targetSteps]
+    const [movedStep] = nextSteps.splice(fromIndex, 1)
+    nextSteps.splice(toIndex, 0, movedStep)
+    const workflowTarget = parsed.spec.workflows?.[selectedWorkflow]
+    if (!workflowTarget) return
+    workflowTarget.steps = nextSteps
+    commitEditorValue(YAML.stringify(parsed.spec))
+    setSelectedStepId(movedStep.id)
+  }
+
+  function duplicateStep(stepId: string) {
+    const parsed = parseWorkflowSpec(editorValue, null)
+    const targetSteps = selectedWorkflow ? parsed.spec?.workflows?.[selectedWorkflow]?.steps : null
+    if (!parsed.spec || !targetSteps) return
+    const index = targetSteps.findIndex((step) => step.id === stepId)
+    if (index < 0) return
+    const original = targetSteps[index]
+    const nextId = uniqueStepId(targetSteps, `${original.id}_copy`)
+    const clone: WorkflowStep = {
+      ...structuredClone(original),
+      id: nextId,
+      output: original.output ? `${nextId}_output` : nextId,
+    }
+    const workflowTarget = parsed.spec.workflows?.[selectedWorkflow]
+    if (!workflowTarget) return
+    workflowTarget.steps = [
+      ...targetSteps.slice(0, index + 1),
+      clone,
+      ...targetSteps.slice(index + 1),
+    ]
+    commitEditorValue(YAML.stringify(parsed.spec))
+    setSelectedStepId(nextId)
+    setToast({ tone: 'info', message: `已複製積木：${original.id}` })
+  }
+
+  function deleteStep(stepId: string) {
+    const parsed = parseWorkflowSpec(editorValue, null)
+    const targetSteps = selectedWorkflow ? parsed.spec?.workflows?.[selectedWorkflow]?.steps : null
+    if (!parsed.spec || !targetSteps) return
+    const step = targetSteps.find((item) => item.id === stepId)
+    if (!step) return
+    if (!window.confirm(`要拿掉「${step.id}」這塊積木嗎？可以用復原救回來。`)) return
+
+    const workflowTarget = parsed.spec.workflows?.[selectedWorkflow]
+    if (!workflowTarget) return
+    workflowTarget.steps = targetSteps.filter((item) => item.id !== stepId)
+    commitEditorValue(YAML.stringify(parsed.spec))
+    setSelectedStepId(workflowTarget.steps[0]?.id ?? '')
+    setToast({ tone: 'info', message: `已拿掉積木：${step.id}` })
   }
 
   return (
@@ -720,6 +672,9 @@ function App() {
               steps={steps}
               selectedStepId={selectedStep?.id}
               onSelectStep={setSelectedStepId}
+              onReorderStep={reorderStep}
+              onDuplicateStep={duplicateStep}
+              onDeleteStep={deleteStep}
             />
           </section>
 
@@ -786,6 +741,11 @@ function App() {
                     placeholder={selectedStep.id}
                   />
                 </label>
+                <StepSpecificFields
+                  step={selectedStep}
+                  workflow={workflow}
+                  onPatchStep={updateSelectedStepPatch}
+                />
               </div>
             )}
             <SelectedStepSummary step={selectedStep} error={editorSpec.error} />
@@ -899,480 +859,17 @@ function App() {
             <StepLegend compact />
             {runGraphSource ? <MermaidChart chart={runGraphSource} /> : <EmptyState loading={loading} />}
             {selectedRun && (
-              <RunDetails run={selectedRun} state={selectedRunState} />
+              <RunDetails
+                run={selectedRun}
+                state={selectedRunState}
+                onSelectStep={setSelectedStepId}
+              />
             )}
           </div>
         </section>
       </section>
     </main>
   )
-}
-
-function RunDetails({ run, state }: { run: WizardRunSummary; state: WizardRunState | null }) {
-  const inputs = state?.inputs ?? {}
-  const completedSteps = (state?.completed_steps ?? []).map(runStepId)
-  const skippedSteps = (state?.skipped_steps ?? []).map(runStepId)
-  const doneCount = run.completedCount + run.skippedCount
-  const percent = run.totalSteps > 0 ? Math.round((doneCount / run.totalSteps) * 100) : 0
-  const progressTitle = run.currentStep
-    ? `正在第 ${Math.min(doneCount + 1, run.totalSteps)}/${run.totalSteps} 步`
-    : run.status === 'completed'
-      ? '流程已跑完'
-      : statusLabel(run.status)
-  const pendingSteps = (state?.steps ?? []).map(runStepId).filter(
-    (step) => !completedSteps.includes(step) && !skippedSteps.includes(step),
-  )
-
-  return (
-    <div className="run-details">
-      <div className="run-progress">
-        <div>
-          <strong>{progressTitle}</strong>
-          <span>{run.currentStep ?? statusLabel(run.status)}</span>
-        </div>
-        <div className="progress-track" aria-label={`執行進度 ${percent}%`}>
-          <div style={{ width: `${percent}%` }} />
-        </div>
-      </div>
-      <div className="run-detail-grid">
-        <span>狀態</span>
-        <strong>{statusLabel(run.status)}</strong>
-        <span>目前步驟</span>
-        <strong>{run.currentStep ?? '已完成'}</strong>
-        <span>進度</span>
-        <strong>{run.completedCount + run.skippedCount}/{run.totalSteps}</strong>
-        <span>更新時間</span>
-        <strong>{formatDate(run.updatedAt)}</strong>
-      </div>
-
-      <ResultCollection
-        stateReady={Boolean(state)}
-        inputs={inputs}
-        completedSteps={completedSteps}
-        skippedSteps={skippedSteps}
-        pendingSteps={pendingSteps}
-        statePath={run.statePath}
-      />
-    </div>
-  )
-}
-
-function MermaidChart({
-  chart,
-  steps = [],
-  selectedStepId,
-  onSelectStep,
-}: {
-  chart: string
-  steps?: WorkflowStep[]
-  selectedStepId?: string
-  onSelectStep?: (stepId: string) => void
-}) {
-  const elementRef = useRef<HTMLDivElement>(null)
-  const selectedStepIdRef = useRef(selectedStepId)
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    selectedStepIdRef.current = selectedStepId
-    if (elementRef.current) highlightMermaidStep(elementRef.current, selectedStepId)
-  }, [selectedStepId])
-
-  useEffect(() => {
-    let cancelled = false
-    const id = `mermaid-${crypto.randomUUID()}`
-
-    async function renderChart() {
-      const { default: mermaid } = await import('mermaid')
-      mermaid.initialize({
-        startOnLoad: false,
-        securityLevel: 'strict',
-        theme: 'base',
-        themeVariables: {
-          fontFamily: 'Aptos, Segoe UI, sans-serif',
-        },
-      })
-      const { svg } = await mermaid.render(id, chart)
-      if (!cancelled && elementRef.current) {
-        elementRef.current.innerHTML = svg
-        wireMermaidStepClicks(elementRef.current, steps, onSelectStep)
-        highlightMermaidStep(elementRef.current, selectedStepIdRef.current)
-        setError('')
-      }
-    }
-
-    renderChart()
-      .then(() => {
-        // Rendering side effects are handled in renderChart.
-      })
-      .catch((reason) => {
-        if (!cancelled && elementRef.current) {
-          elementRef.current.innerHTML = ''
-        }
-        if (!cancelled) setError(errorMessage(reason))
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [chart, onSelectStep, steps])
-
-  if (error) {
-    return <pre className="yaml-view error-text">{error}</pre>
-  }
-
-  return <div className="mermaid-stage" ref={elementRef} />
-}
-
-function BlockToolbox({ onAddStep }: { onAddStep: (template: StepTemplate) => void }) {
-  return (
-    <section className="toolbox-section" aria-label="積木工具箱">
-      <div className="panel-title">
-        <Box size={16} />
-        積木工具箱
-      </div>
-      <div className="toolbox-list">
-        {STEP_TEMPLATES.map((template) => {
-          const meta = stepTypeMeta(template.type)
-          return (
-            <button
-              className={`toolbox-block ${meta.className}`}
-              draggable
-              key={template.type}
-              type="button"
-              onClick={() => onAddStep(template)}
-              onDragStart={(event) => {
-                event.dataTransfer.setData('application/x-step-type', template.type)
-                event.dataTransfer.effectAllowed = 'copy'
-              }}
-            >
-              <strong>{template.label}</strong>
-              <span>{template.hint}</span>
-            </button>
-          )
-        })}
-      </div>
-    </section>
-  )
-}
-
-function StageBlocks({
-  steps,
-  selectedStepId,
-  onSelectStep,
-}: {
-  steps: WorkflowStep[]
-  selectedStepId?: string
-  onSelectStep: (stepId: string) => void
-}) {
-  return (
-    <div className="stage-blocks" aria-label="舞台積木列">
-      <div className="panel-title">
-        <Box size={16} />
-        積木列
-      </div>
-      {steps.length === 0 ? (
-        <div className="mini-empty">把左邊的積木拖到舞台，或點一下積木加入流程。</div>
-      ) : (
-        <div className="stage-block-row">
-          {steps.map((step, index) => {
-            const meta = stepTypeMeta(step.type)
-            return (
-              <button
-                className={`stage-block ${meta.className} ${step.id === selectedStepId ? 'active' : ''}`}
-                key={step.id}
-                type="button"
-                onClick={() => onSelectStep(step.id)}
-              >
-                <small>{index + 1}</small>
-                <strong>{step.id}</strong>
-                <span>{meta.label}</span>
-              </button>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function SelectedStepSummary({ step, error }: { step?: WorkflowStep; error: string }) {
-  if (error) return <pre className="yaml-view error-text">{error}</pre>
-  if (!step) return <div className="mini-empty">尚未選擇步驟</div>
-
-  const facts = [
-    ['積木名稱', step.id],
-    ['做的事情', stepTypeMeta(step.type).label],
-    ['什麼時候做', step.when || '接到上一塊就做'],
-    ['完成後名字', step.output || '尚未命名'],
-    ['會不會卡住後面', step.blocks_downstream ? '會，需要先處理' : '不會'],
-  ]
-
-  return (
-    <div className="step-summary">
-      {facts.map(([label, value]) => (
-        <div key={label}>
-          <span>{label}</span>
-          <strong>{value}</strong>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function ResultCollection({
-  stateReady,
-  inputs,
-  completedSteps,
-  skippedSteps,
-  pendingSteps,
-  statePath,
-}: {
-  stateReady: boolean
-  inputs: Record<string, unknown>
-  completedSteps: string[]
-  skippedSteps: string[]
-  pendingSteps: string[]
-  statePath: string
-}) {
-  const inputPairs = Object.entries(inputs)
-  return (
-    <div className="result-collection">
-      <div className="panel-title">
-        <Box size={16} />
-        成果收集箱
-      </div>
-      {!stateReady && (
-        <div className="mini-empty">正在讀取這次執行的詳細紀錄，稍等一下就會放進收集箱。</div>
-      )}
-      <div className="result-grid">
-        <ResultCard title="已完成" value={`${completedSteps.length} 塊`} items={completedSteps} />
-        <ResultCard title="跳過" value={`${skippedSteps.length} 塊`} items={skippedSteps} />
-        <ResultCard title="還沒跑" value={`${pendingSteps.length} 塊`} items={pendingSteps} />
-      </div>
-      <div className="result-inputs">
-        <span>這次帶進流程的內容</span>
-        {inputPairs.length === 0 ? (
-          <small>無</small>
-        ) : inputPairs.map(([key, value]) => (
-          <small key={key}>{key}: {readableValue(value)}</small>
-        ))}
-      </div>
-      <div className="run-state-path" title={statePath}>進階紀錄位置：{statePath}</div>
-    </div>
-  )
-}
-
-function ResultCard({ title, value, items }: { title: string; value: string; items: string[] }) {
-  return (
-    <div className="result-card">
-      <span>{title}</span>
-      <strong>{value}</strong>
-      {items.length > 0 && (
-        <div className="run-step-pills">
-          {items.slice(0, 6).map((item) => <small key={item}>{item}</small>)}
-          {items.length > 6 && <small>還有 {items.length - 6} 塊</small>}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function EmptyState({ loading }: { loading: boolean }) {
-  return (
-    <div className="empty-state">
-      <Workflow size={28} />
-      <strong>{loading ? '讀取中' : '目前沒有可顯示的流程圖'}</strong>
-      <span>選擇專案和流程後會在這裡顯示。</span>
-    </div>
-  )
-}
-
-function StarterGuide({
-  project,
-  selectedWorkflow,
-  selectedRun,
-  requiredInputCount,
-}: {
-  project: ProjectDetail | null
-  selectedWorkflow: string
-  selectedRun?: WizardRunSummary
-  requiredInputCount: number
-}) {
-  const items = [
-    {
-      title: '選一個專案',
-      detail: project ? project.name : '先從左邊挑一個接入 workflow 的專案',
-      done: Boolean(project),
-    },
-    {
-      title: '挑一條流程',
-      detail: selectedWorkflow || '像選 Scratch 作品一樣，先挑要跑的流程',
-      done: Boolean(selectedWorkflow),
-    },
-    {
-      title: '按開始執行',
-      detail: selectedRun
-        ? `${statusLabel(selectedRun.status)} · ${selectedRun.completedCount + selectedRun.skippedCount}/${selectedRun.totalSteps}`
-        : requiredInputCount > 0
-          ? `先填 ${requiredInputCount} 個必填欄位，再按上方的開始執行`
-          : '可以直接按上方的開始執行',
-      done: Boolean(selectedRun),
-    },
-  ]
-
-  return (
-    <section className="starter-guide" aria-label="快速開始">
-      {items.map((item, index) => (
-        <div className={`starter-step ${item.done ? 'done' : ''}`} key={item.title}>
-          <span>{index + 1}</span>
-          <div>
-            <strong>{item.title}</strong>
-            <small>{item.detail}</small>
-          </div>
-        </div>
-      ))}
-    </section>
-  )
-}
-
-function StepLegend({ compact = false }: { compact?: boolean }) {
-  const items = compact
-    ? ['ai', 'shell', 'code-edit', 'file']
-    : ['ai', 'shell', 'tool-or-shell', 'tool-or-code-edit', 'code-edit', 'file']
-  return (
-    <div className={`step-legend ${compact ? 'compact' : ''}`}>
-      {items.map((type) => {
-        const meta = stepTypeMeta(type)
-        return (
-          <span className={meta.className} key={type}>
-            <i />
-            {meta.label}
-          </span>
-        )
-      })}
-    </div>
-  )
-}
-
-async function api<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init)
-  const text = await response.text()
-  const payload = text ? JSON.parse(text) : null
-  if (!response.ok) {
-    throw new Error(payload?.message ?? text ?? response.statusText)
-  }
-  return payload as T
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
-function friendlyErrorMessage(error: unknown): string {
-  const message = errorMessage(error)
-  if (message.includes('缺少必要輸入')) return `${message}。請把有 * 的格子填完再開始。`
-  if (message.includes('workflow content is empty')) return 'workflow 內容是空的。請先放入流程內容再驗證或儲存。'
-  if (message.includes('Unknown project')) return '找不到這個專案。請重新掃描後再試一次。'
-  if (message.includes('timed out') || message.includes('timeout')) return '執行等太久了。請確認 ai-mc 指令沒有卡住，再重新試一次。'
-  if (message.includes('ENOENT')) return '找不到需要的檔案或指令。請確認專案路徑和 ai-mc CLI 設定正確。'
-  return message
-}
-
-function formatDate(value: string): string {
-  if (!value) return 'unknown'
-  const date = new Date(value)
-  if (Number.isNaN(date.valueOf())) return value
-  return date.toLocaleString('zh-TW', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-function countLabel(count: number, unit: string): string {
-  return `${count} ${unit}`
-}
-
-function statusLabel(status: string): string {
-  const labels: Record<string, string> = {
-    completed: '已完成',
-    blocked: '等待處理',
-    running: '執行中',
-    pending: '尚未開始',
-    failed: '失敗',
-    cancelled: '已取消',
-  }
-  return labels[status] ?? status
-}
-
-function stepTypeMeta(type: string): { label: string; hint: string; className: string } {
-  const map: Record<string, { label: string; hint: string; className: string }> = {
-    ai: {
-      label: '請 AI 想一想',
-      hint: '適合整理、判斷、寫說明',
-      className: 'type-ai',
-    },
-    shell: {
-      label: '請電腦執行指令',
-      hint: '適合跑測試、建置、查狀態',
-      className: 'type-shell',
-    },
-    'tool-or-shell': {
-      label: '用工具或指令',
-      hint: '可以交給工具，也可以跑命令',
-      className: 'type-tool',
-    },
-    'tool-or-code-edit': {
-      label: '用工具或改檔案',
-      hint: '適合讓 AI 實作一小段改動',
-      className: 'type-edit',
-    },
-    file: {
-      label: '讀寫檔案',
-      hint: '適合產生或檢查檔案',
-      className: 'type-file',
-    },
-    'code-edit': {
-      label: '修改程式',
-      hint: '適合真的改程式碼',
-      className: 'type-edit',
-    },
-  }
-  return map[type] ?? {
-    label: type,
-    hint: '自訂步驟類型',
-    className: 'type-tool',
-  }
-}
-
-function inputPlaceholder(inputName: string, required: boolean, summary: WorkflowSummary): string {
-  const example = summary.inputExamples?.[inputName]
-  if (example) return `例：${example}`
-  return required ? '必填' : '選填'
-}
-
-function uniqueStepId(steps: WorkflowStep[], prefix: string): string {
-  const used = new Set(steps.map((step) => step.id))
-  let index = steps.length + 1
-  let candidate = `${prefix}_${index}`
-  while (used.has(candidate)) {
-    index += 1
-    candidate = `${prefix}_${index}`
-  }
-  return candidate
-}
-
-function readableValue(value: unknown): string {
-  if (typeof value === 'string') return value
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  if (Array.isArray(value)) return value.map(readableValue).join('、')
-  if (value && typeof value === 'object') {
-    return Object.entries(value)
-      .map(([key, item]) => `${key}: ${readableValue(item)}`)
-      .join('、')
-  }
-  return String(value ?? '')
 }
 
 function shouldHandleWorkflowUndo(target: EventTarget | null): boolean {
@@ -1395,115 +892,6 @@ function seedRunInputs(summary?: WorkflowSummary): Record<string, string> {
   }
 
   return next
-}
-
-function runStepId(value: unknown): string {
-  if (typeof value === 'string') return value
-  if (value && typeof value === 'object' && 'id' in value) {
-    return String((value as { id?: unknown }).id ?? '')
-  }
-  return String(value ?? '')
-}
-
-function parseWorkflowSpec(value: string, fallback?: WorkflowSpec | null): { spec: WorkflowSpec | null; error: string } {
-  if (!value.trim()) return { spec: fallback ?? null, error: '' }
-  try {
-    return { spec: YAML.parse(value) as WorkflowSpec, error: '' }
-  } catch (error) {
-    return { spec: fallback ?? null, error: errorMessage(error) }
-  }
-}
-
-function buildClientMermaid(workflowName: string, workflow: WorkflowDefinition): string {
-  const steps = workflow.steps ?? []
-  const lines = [
-    'flowchart TD',
-    `  %% unsaved preview: ${workflowName}`,
-  ]
-
-  steps.forEach((step, index) => {
-    const nodeId = mermaidNodeId(step, index)
-    const label = [
-      step.id,
-      step.type,
-      step.when ? `when: ${step.when}` : '',
-    ].filter(Boolean).map(mermaidText).join('<br/>')
-    lines.push(`  ${nodeId}["${label}"]`)
-  })
-
-  for (let index = 1; index < steps.length; index += 1) {
-    const from = mermaidNodeId(steps[index - 1], index - 1)
-    const to = mermaidNodeId(steps[index], index)
-    const label = steps[index].when ? `|"${mermaidText(steps[index].when ?? '')}"|` : ''
-    lines.push(`  ${from} -->${label} ${to}`)
-  }
-
-  lines.push(
-    '  classDef ai fill:#eef2ff,stroke:#4f46e5,color:#111827;',
-    '  classDef shell fill:#ecfdf5,stroke:#059669,color:#111827;',
-    '  classDef edit fill:#fff7ed,stroke:#ea580c,color:#111827;',
-    '  classDef tool fill:#f8fafc,stroke:#64748b,color:#111827;',
-  )
-  steps.forEach((step, index) => {
-    lines.push(`  class ${mermaidNodeId(step, index)} ${mermaidTypeClass(step.type)};`)
-  })
-
-  return `${lines.join('\n')}\n`
-}
-
-function wireMermaidStepClicks(
-  element: HTMLDivElement,
-  steps: WorkflowStep[],
-  onSelectStep?: (stepId: string) => void,
-) {
-  if (!onSelectStep || steps.length === 0) return
-  const nodes = [...element.querySelectorAll<SVGGElement>('g.node')]
-  const longestFirst = [...steps].sort((left, right) => right.id.length - left.id.length)
-  for (const node of nodes) {
-    const text = node.textContent ?? ''
-    const labelParts = [...node.querySelectorAll('tspan, span')]
-      .map((item) => item.textContent?.trim() ?? '')
-      .filter(Boolean)
-    const step = longestFirst.find((item) => (
-      labelParts.includes(item.id)
-      || text.trim() === item.id
-      || text.trim().startsWith(item.id)
-    ))
-    if (!step) continue
-    node.dataset.stepId = step.id
-    node.setAttribute('role', 'button')
-    node.setAttribute('tabindex', '0')
-    node.addEventListener('click', () => onSelectStep(step.id))
-    node.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault()
-        onSelectStep(step.id)
-      }
-    })
-  }
-}
-
-function highlightMermaidStep(element: HTMLDivElement, selectedStepId?: string) {
-  const nodes = [...element.querySelectorAll<SVGGElement>('g.node')]
-  for (const node of nodes) {
-    node.classList.toggle('selected-mermaid-node', Boolean(selectedStepId && node.dataset.stepId === selectedStepId))
-  }
-}
-
-function mermaidNodeId(step: WorkflowStep, index: number): string {
-  const safe = String(step.id).replace(/[^A-Za-z0-9_]/g, '_')
-  return `s${index}_${safe}`
-}
-
-function mermaidText(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, '<br/>')
-}
-
-function mermaidTypeClass(type: string): string {
-  if (type === 'code-edit' || type === 'tool-or-code-edit') return 'edit'
-  if (type === 'shell') return 'shell'
-  if (type === 'ai') return 'ai'
-  return 'tool'
 }
 
 export default App

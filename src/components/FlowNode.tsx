@@ -6,6 +6,8 @@ import type { WorkflowStep } from '../types/workflow'
 export function FlowNode({
   step,
   index,
+  canCollapseDownstream,
+  downstreamHiddenCount,
   layout,
   selected,
   onSelect,
@@ -14,6 +16,8 @@ export function FlowNode({
 }: {
   step: WorkflowStep
   index: number
+  canCollapseDownstream: boolean
+  downstreamHiddenCount: number
   layout: FlowNodeLayout
   selected: boolean
   onSelect: (stepId: string) => void
@@ -36,7 +40,7 @@ export function FlowNode({
         left: layout.x,
         top: layout.y,
         width: FLOW_NODE_WIDTH,
-        minHeight: collapsed ? 76 : FLOW_NODE_HEIGHT,
+        minHeight: FLOW_NODE_HEIGHT,
       }}
       tabIndex={0}
       onClick={() => onSelect(step.id)}
@@ -61,30 +65,31 @@ export function FlowNode({
         <Waypoints size={14} />
         {meta.label}
       </div>
-      {collapsed ? (
-        <div className="flow-node-folded">已收合</div>
-      ) : (
-        <dl className="flow-node-facts">
-          <div>
-            <dt>條件/提示</dt>
-            <dd>{step.when || '接著做'}</dd>
-          </div>
-          <div>
-            <dt>成果</dt>
-            <dd>{step.output || '未命名'}</dd>
-          </div>
-        </dl>
+      <dl className="flow-node-facts">
+        <div>
+          <dt>條件/提示</dt>
+          <dd>{step.when || '接著做'}</dd>
+        </div>
+        <div>
+          <dt>成果</dt>
+          <dd>{step.output || '未命名'}</dd>
+        </div>
+      </dl>
+      {collapsed && (
+        <div className="flow-node-folded">後面已收合 {downstreamHiddenCount} 塊</div>
       )}
       <button
-        className="flow-node-fold"
+        aria-label={collapsed ? '展開後續流程' : '收合後續流程'}
+        className="flow-node-arrow"
+        disabled={!canCollapseDownstream}
         type="button"
+        title={collapsed ? '展開後續流程' : '收合後續流程'}
         onClick={(event) => {
           event.stopPropagation()
           onToggleCollapsed(step.id)
         }}
       >
         {collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-        {collapsed ? '展開' : '收合'}
       </button>
     </article>
   )

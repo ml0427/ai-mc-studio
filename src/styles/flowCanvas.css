@@ -189,7 +189,7 @@
 }
 
 .flow-node {
-  padding: 9px;
+  padding: 9px 24px 9px 9px;
   cursor: grab;
 }
 
@@ -234,14 +234,27 @@
   font-weight: 850;
 }
 
-.flow-node-kind,
-.flow-node-folded {
+.flow-node-kind {
   margin-top: 8px;
   display: flex;
   align-items: center;
   gap: 6px;
   color: #59616d;
   font-size: 12px;
+}
+
+.flow-node-folded {
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  border: 1px solid #f59e0b;
+  border-radius: 999px;
+  background: #fffbeb;
+  color: #92400e;
+  padding: 3px 7px;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .flow-node-facts {
@@ -271,18 +284,35 @@
   font-weight: 750;
 }
 
-.flow-node-fold {
-  margin-top: 9px;
-  display: inline-flex;
+.flow-node-arrow {
+  position: absolute;
+  right: -16px;
+  top: 50%;
+  z-index: 2;
+  width: 31px;
+  height: 31px;
+  display: inline-grid;
+  place-items: center;
   align-items: center;
-  gap: 5px;
-  border: 1px solid #d1d5db;
-  border-radius: 5px;
-  background: #f8fafc;
+  border: 1px solid #172033;
+  border-radius: 999px;
+  background: #ffffff;
   color: #172033;
-  padding: 4px 7px;
+  padding: 0;
+  transform: translateY(-50%);
   cursor: pointer;
-  font-size: 12px;
+  box-shadow: 0 7px 14px rgba(15, 23, 42, 0.16);
+}
+
+.flow-node.collapsed .flow-node-arrow {
+  background: #172033;
+  color: #ffffff;
+}
+
+.flow-node-arrow:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .flow-empty {

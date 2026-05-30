@@ -41,7 +41,9 @@ export function FlowCanvas({
   })
   const surfaceRef = useRef<HTMLDivElement | null>(null)
   const [dragging, setDragging] = useState<{ stepId: string; offsetX: number; offsetY: number } | null>(null)
-  const canvasSize = flowCanvasSize(steps, layout)
+  const collapsedIndex = steps.findIndex((step) => layout.nodes[step.id]?.collapsed)
+  const visibleSteps = collapsedIndex >= 0 ? steps.slice(0, collapsedIndex + 1) : steps
+  const canvasSize = flowCanvasSize(visibleSteps, layout)
 
   function startDrag(stepId: string, clientX: number, clientY: number) {
     const node = layout.nodes[stepId]
@@ -106,7 +108,7 @@ export function FlowCanvas({
               onPointerUp={() => setDragging(null)}
               onPointerLeave={() => setDragging(null)}
             >
-              <FlowEdges steps={steps} layout={layout} />
+              <FlowEdges steps={visibleSteps} layout={layout} />
               <article
                 className="flow-entry-node"
                 style={{ left: 42, top: 238, width: FLOW_NODE_WIDTH, minHeight: FLOW_NODE_HEIGHT }}
@@ -122,8 +124,10 @@ export function FlowCanvas({
                 <div className="flow-empty">
                   <EmptyState loading={loading} />
                 </div>
-              ) : steps.map((step, index) => (
+              ) : visibleSteps.map((step, index) => (
                 <FlowNode
+                  canCollapseDownstream={index < steps.length - 1}
+                  downstreamHiddenCount={layout.nodes[step.id]?.collapsed ? steps.length - index - 1 : 0}
                   index={index}
                   key={step.id}
                   layout={layout.nodes[step.id]}

@@ -17,6 +17,7 @@ export function RunPanel({
   selectedRun,
   selectedRunState,
   runGraphSource,
+  stageStepIds,
   loading,
   onFillRunInputExamples,
   onUpdateRunInput,
@@ -34,6 +35,7 @@ export function RunPanel({
   selectedRun?: WizardRunSummary
   selectedRunState: WizardRunState | null
   runGraphSource: string
+  stageStepIds: string[]
   loading: boolean
   onFillRunInputExamples: () => void
   onUpdateRunInput: (inputName: string, value: string) => void
@@ -110,6 +112,7 @@ export function RunPanel({
           <RunDetails
             run={selectedRun}
             state={selectedRunState}
+            stageStepIds={stageStepIds}
             onSelectStep={onSelectStep}
           />
         )}

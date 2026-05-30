@@ -16,10 +16,12 @@ import type { WizardRunState, WizardRunSummary } from '../types/workflow'
 export function RunDetails({
   run,
   state,
+  stageStepIds,
   onSelectStep,
 }: {
   run: WizardRunSummary
   state: WizardRunState | null
+  stageStepIds: string[]
   onSelectStep: (stepId: string) => void
 }) {
   const inputs = state?.inputs ?? {}
@@ -74,6 +76,7 @@ export function RunDetails({
         pendingSteps={pendingSteps}
         stepResults={stepResults}
         statePath={run.statePath}
+        stageStepIds={stageStepIds}
         onSelectStep={onSelectStep}
       />
     </div>
@@ -125,6 +128,7 @@ function ResultCollection({
   pendingSteps,
   stepResults,
   statePath,
+  stageStepIds,
   onSelectStep,
 }: {
   stateReady: boolean
@@ -134,11 +138,13 @@ function ResultCollection({
   pendingSteps: string[]
   stepResults: ResultStep[]
   statePath: string
+  stageStepIds: string[]
   onSelectStep: (stepId: string) => void
 }) {
   const [copyFeedback, setCopyFeedback] = useState<{ key: string; status: 'copied' | 'failed' } | null>(null)
   const [selectedFeedbackStep, setSelectedFeedbackStep] = useState('')
   const inputPairs = Object.entries(inputs)
+  const stageStepIdSet = new Set(stageStepIds)
 
   async function copyResult(text: string, key: string) {
     const copied = await copyText(text)
@@ -173,6 +179,7 @@ function ResultCollection({
         ) : stepResults.map((step, index) => {
           const copyText = step.artifactPath || step.detailValue || step.output || step.id
           const canCopy = Boolean(copyText)
+          const canLocateStep = Boolean(step.id && stageStepIdSet.has(step.id))
           const feedback = copyFeedback?.key === step.id ? copyFeedback.status : ''
 
           return (
@@ -223,7 +230,7 @@ function ResultCollection({
                   )}
                 </dl>
                 <div className="result-step-actions">
-                  {step.id && (
+                  {canLocateStep ? (
                     <button
                       className={`view-step-button ${selectedFeedbackStep === step.id ? 'selected' : ''}`}
                       type="button"
@@ -232,6 +239,8 @@ function ResultCollection({
                       <MousePointer2 size={14} />
                       {selectedFeedbackStep === step.id ? '已選到舞台積木' : '看這塊積木'}
                     </button>
+                  ) : (
+                    <span className="missing-step-note">這塊積木已不在目前流程</span>
                   )}
                   {canCopy && (
                     <button

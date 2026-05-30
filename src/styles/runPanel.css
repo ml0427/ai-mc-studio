@@ -392,6 +392,19 @@
   border-color: #a3e635;
 }
 
+.missing-step-note {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #59616d;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 9px;
+}
+
 .result-inputs {
   display: flex;
   flex-wrap: wrap;

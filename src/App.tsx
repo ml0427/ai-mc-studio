@@ -454,6 +454,7 @@ function App() {
           selectedRun={selectedRun}
           selectedRunState={selectedRunState}
           runGraphSource={runGraphSource}
+          stageStepIds={steps.map((step) => step.id)}
           loading={loading}
           onFillRunInputExamples={fillRunInputExamples}
           onUpdateRunInput={updateRunInput}

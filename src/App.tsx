@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type DragEvent } from 'react'
+import { useEffect, useState, type DragEvent } from 'react'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -21,6 +21,7 @@ import { StepInspector } from './components/StepInspector'
 import { StepLegend } from './components/StepSummary'
 import { WorkbenchHeader } from './components/WorkbenchHeader'
 import { WorkflowPanel } from './components/WorkflowPanel'
+import { useProjects } from './hooks/useProjects'
 import { useRuns } from './hooks/useRuns'
 import { useWorkflowEditor } from './hooks/useWorkflowEditor'
 import { buildClientMermaid } from './lib/workflowYaml'
@@ -29,7 +30,6 @@ import {
 } from './lib/format'
 import type {
   ProjectDetail,
-  ProjectSummary,
   ToastState,
   ValidationResult,
   WizardRunSummary,
@@ -38,20 +38,33 @@ import type {
 import './App.css'
 
 function App() {
-  const [projects, setProjects] = useState<ProjectSummary[]>([])
-  const [projectsRoot, setProjectsRoot] = useState('')
-  const [scanDepth, setScanDepth] = useState(0)
-  const [projectFilter, setProjectFilter] = useState('')
-  const [selectedProjectId, setSelectedProjectId] = useState('')
-  const [project, setProject] = useState<ProjectDetail | null>(null)
   const [selectedWorkflow, setSelectedWorkflow] = useState('')
   const [selectedStepId, setSelectedStepId] = useState('')
   const [graphSource, setGraphSource] = useState('')
   const [runInputValues, setRunInputValues] = useState<Record<string, string>>({})
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null)
   const [toast, setToast] = useState<ToastState | null>(null)
-  const [loading, setLoading] = useState(false)
   const [showAdvancedEditor, setShowAdvancedEditor] = useState(false)
+  const {
+    projectsRoot,
+    scanDepth,
+    projectFilter,
+    filteredProjects,
+    selectedProjectId,
+    project,
+    loadingProjects,
+    loadProjects,
+    selectProject: requestProjectSelection,
+    setProject,
+    setProjectFilter,
+  } = useProjects({
+    setToast,
+    onProjectLoaded: (detail) => {
+      selectWorkflow(detail, detail.workflows[0]?.name ?? '')
+      resetEditorHistory(detail.rawYaml)
+    },
+  })
+  const loading = loadingProjects
   const {
     runs,
     selectedRunId,
@@ -95,23 +108,9 @@ function App() {
     selectedWorkflowSummary?.inputExamples
     && Object.keys(selectedWorkflowSummary.inputExamples).length > 0,
   )
-  const filteredProjects = useMemo(() => {
-    const keyword = projectFilter.trim().toLowerCase()
-    if (!keyword) return projects
-
-    return projects.filter((item) => [
-      item.name,
-      item.rootPath,
-      ...item.workflows.map((workflowItem) => workflowItem.name),
-    ].some((value) => value.toLowerCase().includes(keyword)))
-  }, [projectFilter, projects])
   const displayedWorkflowGraph = isDirty && workflow && selectedWorkflow
     ? buildClientMermaid(selectedWorkflow, workflow)
     : graphSource
-
-  useEffect(() => {
-    void loadProjects()
-  }, [])
 
   useEffect(() => {
     function handleUndo(event: KeyboardEvent) {
@@ -130,37 +129,6 @@ function App() {
   }, [editorUndoStack.length, undoEditorValue])
 
   useEffect(() => {
-    if (!selectedProjectId) return
-    let cancelled = false
-
-    async function readSelectedProject() {
-      setLoading(true)
-      try {
-        const detail = await api<ProjectDetail>(`/api/projects/${selectedProjectId}`)
-        if (cancelled) return
-        setProject(detail)
-        selectWorkflow(detail, detail.workflows[0]?.name ?? '')
-        resetEditorHistory(detail.rawYaml)
-      } catch (error) {
-        if (!cancelled) setToast({ tone: 'error', message: friendlyErrorMessage(error) })
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-
-    void readSelectedProject()
-
-    return () => {
-      cancelled = true
-    }
-  }, [resetEditorHistory, selectedProjectId])
-
-  useEffect(() => {
-    if (!project || !selectedWorkflow) return
-    void loadGraph(project.id, selectedWorkflow)
-  }, [project, selectedWorkflow])
-
-  useEffect(() => {
     function confirmLeave(event: BeforeUnloadEvent) {
       if (!isDirty) return
       event.preventDefault()
@@ -170,22 +138,6 @@ function App() {
     window.addEventListener('beforeunload', confirmLeave)
     return () => window.removeEventListener('beforeunload', confirmLeave)
   }, [isDirty])
-
-  async function loadProjects() {
-    setLoading(true)
-    try {
-      const data = await api<{ projectsRoot: string; scanDepth: number; projects: ProjectSummary[] }>('/api/projects')
-      setProjectsRoot(data.projectsRoot)
-      setScanDepth(data.scanDepth)
-      setProjects(data.projects)
-      setSelectedProjectId((current) => current || data.projects[0]?.id || '')
-      setToast({ tone: 'ok', message: `掃描到 ${data.projects.length} 個已接入專案` })
-    } catch (error) {
-      setToast({ tone: 'error', message: friendlyErrorMessage(error) })
-    } finally {
-      setLoading(false)
-    }
-  }
 
   async function loadGraph(projectId: string, workflowName: string) {
     try {
@@ -197,6 +149,14 @@ function App() {
       setToast({ tone: 'error', message: friendlyErrorMessage(error) })
     }
   }
+
+  useEffect(() => {
+    if (!project || !selectedWorkflow) return undefined
+    const timeoutId = window.setTimeout(() => {
+      void loadGraph(project.id, selectedWorkflow)
+    }, 0)
+    return () => window.clearTimeout(timeoutId)
+  }, [project, selectedWorkflow])
 
   async function startRun() {
     if (!project || !selectedWorkflowSummary) return
@@ -303,8 +263,8 @@ function App() {
 
   function selectProject(projectId: string) {
     if (projectId === selectedProjectId) return
-    if (isDirty && !window.confirm('目前 workflow.yaml 尚未儲存，確定要切換專案？')) return
-    setSelectedProjectId(projectId)
+    const canSwitch = !isDirty || window.confirm('目前 workflow.yaml 尚未儲存，確定要切換專案？')
+    requestProjectSelection(projectId, canSwitch)
   }
 
   function updateRunInput(inputName: string, value: string) {

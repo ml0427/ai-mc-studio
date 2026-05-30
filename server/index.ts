@@ -80,6 +80,7 @@ type WorkflowSummary = {
   stepCount: number
   requiredInputs: string[]
   optionalInputs: string[]
+  inputExamples: Record<string, string>
   gateCount: number
 }
 
@@ -382,17 +383,44 @@ async function readProjectDetail(project: ProjectRecord): Promise<ProjectDetail>
 }
 
 function workflowSummaries(spec: WorkflowSpec): WorkflowSummary[] {
-  return Object.entries(spec.workflows ?? {}).map(([name, workflow]) => ({
-    name,
-    description: workflow.description ?? '',
-    stepCount: workflow.steps?.length ?? 0,
-    requiredInputs: workflow.inputs?.required?.map((input) => input.name) ?? [],
-    optionalInputs: workflow.inputs?.optional?.map((input) => input.name) ?? [],
-    gateCount: [
-      ...normalizeList((workflow.gates as { fail_if?: unknown })?.fail_if),
-      ...normalizeList((workflow.gates as { warn_if?: unknown })?.warn_if),
-    ].length,
-  }))
+  return Object.entries(spec.workflows ?? {}).map(([name, workflow]) => {
+    const requiredInputs = workflow.inputs?.required ?? []
+    const optionalInputs = workflow.inputs?.optional ?? []
+
+    return {
+      name,
+      description: workflow.description ?? '',
+      stepCount: workflow.steps?.length ?? 0,
+      requiredInputs: requiredInputs.map((input) => input.name),
+      optionalInputs: optionalInputs.map((input) => input.name),
+      inputExamples: inputExamples([...requiredInputs, ...optionalInputs]),
+      gateCount: [
+        ...normalizeList((workflow.gates as { fail_if?: unknown })?.fail_if),
+        ...normalizeList((workflow.gates as { warn_if?: unknown })?.warn_if),
+      ].length,
+    }
+  })
+}
+
+function inputExamples(inputs: WorkflowInput[]): Record<string, string> {
+  const examples: Record<string, string> = {}
+  for (const input of inputs) {
+    if (input.example === undefined || input.example === null) continue
+    examples[input.name] = readableExample(input.example)
+  }
+  return examples
+}
+
+function readableExample(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (Array.isArray(value)) return value.map(readableExample).join('、')
+  if (value && typeof value === 'object') {
+    return Object.entries(value)
+      .map(([key, item]) => `${key}: ${readableExample(item)}`)
+      .join('、')
+  }
+  return String(value ?? '')
 }
 
 async function readRuns(projectRoot: string): Promise<WizardRunSummary[]> {

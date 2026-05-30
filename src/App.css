@@ -292,6 +292,62 @@ h1 {
   border-color: #93c5fd;
 }
 
+.starter-guide {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.starter-step {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fbfbf8;
+  padding: 10px;
+}
+
+.starter-step > span {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: #1b1f24;
+  color: #f8fafc;
+  font-weight: 800;
+}
+
+.starter-step.done > span {
+  background: #d7ff64;
+  color: #101418;
+}
+
+.starter-step div {
+  min-width: 0;
+}
+
+.starter-step strong,
+.starter-step small {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.starter-step strong {
+  color: #172033;
+  font-size: 14px;
+}
+
+.starter-step small {
+  margin-top: 3px;
+  color: #59616d;
+  font-size: 12px;
+}
+
 .studio-grid {
   min-height: 0;
   display: grid;
@@ -411,6 +467,68 @@ h1 {
   height: auto;
 }
 
+.step-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: -2px 0 10px;
+}
+
+.step-legend.compact {
+  margin-bottom: 8px;
+}
+
+.step-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #374151;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.step-legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+
+.type-ai i,
+.block-card.type-ai {
+  --block-color: #5b6ee1;
+}
+
+.type-shell i,
+.block-card.type-shell {
+  --block-color: #16a34a;
+}
+
+.type-edit i,
+.block-card.type-edit {
+  --block-color: #f97316;
+}
+
+.type-file i,
+.block-card.type-file {
+  --block-color: #0ea5e9;
+}
+
+.type-tool i,
+.block-card.type-tool {
+  --block-color: #64748b;
+}
+
+.step-legend .type-ai i,
+.step-legend .type-shell i,
+.step-legend .type-edit i,
+.step-legend .type-file i,
+.step-legend .type-tool i {
+  background: var(--block-color);
+}
+
 .step-stack {
   display: flex;
   flex-direction: column;
@@ -472,6 +590,31 @@ h1 {
   display: grid;
   gap: 8px;
   margin-bottom: 10px;
+}
+
+.block-card {
+  border: 1px solid color-mix(in srgb, var(--block-color) 55%, #ffffff);
+  border-left: 7px solid var(--block-color);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.block-card-header {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 2px;
+}
+
+.block-card-header span {
+  color: #172033;
+  font-weight: 800;
+  font-size: 14px;
+}
+
+.block-card-header small {
+  color: #59616d;
+  font-size: 12px;
 }
 
 .step-editor label {
@@ -601,6 +744,47 @@ h1 {
   padding: 10px;
 }
 
+.run-progress {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.run-progress > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.run-progress strong,
+.run-progress span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.run-progress strong {
+  color: #172033;
+}
+
+.run-progress span {
+  color: #59616d;
+  font-size: 12px;
+}
+
+.progress-track {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e5e7eb;
+}
+
+.progress-track div {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #d7ff64, #16a34a);
+  transition: width 0.2s ease;
+}
+
 .run-detail-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -700,13 +884,34 @@ h1 {
 
 .run-input-title {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   color: #424a55;
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+.run-input-title span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-input-title button {
+  flex: 0 0 auto;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #172033;
+  padding: 4px 7px;
+  cursor: pointer;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .run-inputs label {
@@ -800,6 +1005,10 @@ h1 {
   }
 
   .studio-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .starter-guide {
     grid-template-columns: 1fr;
   }
 

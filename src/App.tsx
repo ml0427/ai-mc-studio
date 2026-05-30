@@ -49,6 +49,7 @@ type WorkflowSummary = {
   stepCount: number
   requiredInputs: string[]
   optionalInputs: string[]
+  inputExamples?: Record<string, string>
   gateCount: number
 }
 
@@ -136,6 +137,10 @@ function App() {
   const selectedWorkflowSummary = project?.workflows.find((item) => item.name === selectedWorkflow)
   const selectedRun = runs.find((run) => run.runId === selectedRunId)
   const isDirty = Boolean(project && editorValue !== project.rawYaml)
+  const hasRunInputExamples = Boolean(
+    selectedWorkflowSummary?.inputExamples
+    && Object.keys(selectedWorkflowSummary.inputExamples).length > 0,
+  )
   const filteredProjects = useMemo(() => {
     const keyword = projectFilter.trim().toLowerCase()
     if (!keyword) return projects
@@ -157,7 +162,7 @@ function App() {
       setRunGraphSource(await response.text())
     } catch (error) {
       setRunGraphSource('')
-      setToast({ tone: 'error', message: errorMessage(error) })
+      setToast({ tone: 'error', message: friendlyErrorMessage(error) })
     }
   }, [])
 
@@ -166,7 +171,7 @@ function App() {
       setSelectedRunState(await api<WizardRunState>(`/api/projects/${projectId}/runs/${encodeURIComponent(runId)}`))
     } catch (error) {
       setSelectedRunState(null)
-      setToast({ tone: 'error', message: errorMessage(error) })
+      setToast({ tone: 'error', message: friendlyErrorMessage(error) })
     }
   }, [])
 
@@ -198,7 +203,7 @@ function App() {
       setSelectedRunId('')
       setRunGraphSource('')
       setSelectedRunState(null)
-      if (!options.quiet) setToast({ tone: 'error', message: errorMessage(error) })
+      if (!options.quiet) setToast({ tone: 'error', message: friendlyErrorMessage(error) })
     }
   }, [loadRunGraph, loadRunState])
 
@@ -220,7 +225,7 @@ function App() {
         setEditorValue(detail.rawYaml)
         await loadRuns(detail.id)
       } catch (error) {
-        if (!cancelled) setToast({ tone: 'error', message: errorMessage(error) })
+        if (!cancelled) setToast({ tone: 'error', message: friendlyErrorMessage(error) })
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -267,7 +272,7 @@ function App() {
       setSelectedProjectId((current) => current || data.projects[0]?.id || '')
       setToast({ tone: 'ok', message: `掃描到 ${data.projects.length} 個已接入專案` })
     } catch (error) {
-      setToast({ tone: 'error', message: errorMessage(error) })
+      setToast({ tone: 'error', message: friendlyErrorMessage(error) })
     } finally {
       setLoading(false)
     }
@@ -280,7 +285,7 @@ function App() {
       setGraphSource(await response.text())
     } catch (error) {
       setGraphSource('')
-      setToast({ tone: 'error', message: errorMessage(error) })
+      setToast({ tone: 'error', message: friendlyErrorMessage(error) })
     }
   }
 
@@ -318,7 +323,7 @@ function App() {
       setToast({ tone: 'ok', message: `已建立 run：${result.runId ?? selectedWorkflow}` })
       await loadRuns(project.id, result.runId)
     } catch (error) {
-      setToast({ tone: 'error', message: errorMessage(error) })
+      setToast({ tone: 'error', message: friendlyErrorMessage(error) })
     }
   }
 
@@ -341,7 +346,7 @@ function App() {
       })
       setToast({ tone: 'ok', message: `${isDirty ? '草稿' : '檔案'}驗證通過` })
     } catch (error) {
-      const message = errorMessage(error)
+      const message = friendlyErrorMessage(error)
       setValidationResult({
         tone: 'error',
         title: `${isDirty ? '草稿' : '檔案'}驗證失敗`,
@@ -375,7 +380,7 @@ function App() {
       await loadProjects()
       await loadRuns(result.project.id, selectedRunId)
     } catch (error) {
-      setToast({ tone: 'error', message: errorMessage(error) })
+      setToast({ tone: 'error', message: friendlyErrorMessage(error) })
     }
   }
 
@@ -400,6 +405,21 @@ function App() {
       ...current,
       [inputName]: value,
     }))
+  }
+
+  function fillRunInputExamples() {
+    if (!selectedWorkflowSummary?.inputExamples) return
+    setRunInputValues((current) => {
+      const next = { ...current }
+      for (const inputName of [
+        ...selectedWorkflowSummary.requiredInputs,
+        ...selectedWorkflowSummary.optionalInputs,
+      ]) {
+        const example = selectedWorkflowSummary.inputExamples?.[inputName]
+        if (example && !next[inputName]) next[inputName] = example
+      }
+      return next
+    })
   }
 
   function selectRun(runId: string) {
@@ -504,10 +524,17 @@ function App() {
             </button>
             <button type="button" className="primary" onClick={saveWorkflow} disabled={!project || !isDirty}>
               <Save size={16} />
-              儲存 YAML{isDirty ? ' *' : ''}
+              儲存流程{isDirty ? ' *' : ''}
             </button>
           </div>
         </header>
+
+        <StarterGuide
+          project={project}
+          selectedWorkflow={selectedWorkflow}
+          selectedRun={selectedRun}
+          requiredInputCount={selectedWorkflowSummary?.requiredInputs.length ?? 0}
+        />
 
         {toast && (
           <div className={`toast ${toast.tone}`}>
@@ -541,6 +568,7 @@ function App() {
               流程圖
               {isDirty && <span className="title-note dirty">草稿預覽</span>}
             </div>
+            <StepLegend />
             {displayedWorkflowGraph ? <MermaidChart chart={displayedWorkflowGraph} /> : <EmptyState loading={loading} />}
           </section>
 
@@ -558,13 +586,13 @@ function App() {
                   onClick={() => setSelectedStepId(step.id)}
                 >
                   <span>{step.id}</span>
-                  <small>{step.type}</small>
+                  <small>{stepTypeMeta(step.type).label}</small>
                 </button>
               ))}
             </div>
             {selectedStep && (
               <div className="step-facts">
-                <span>{selectedStep.type}</span>
+                <span>{stepTypeMeta(selectedStep.type).label}</span>
                 {selectedStep.when && <span>條件</span>}
                 {selectedStep.command_ref && <span>{selectedStep.command_ref}</span>}
                 {selectedStep.output && <span>輸出：{selectedStep.output}</span>}
@@ -572,23 +600,27 @@ function App() {
               </div>
             )}
             {selectedStep && (
-              <div className="step-editor">
+              <div className={`step-editor block-card ${stepTypeMeta(selectedStep.type).className}`}>
+                <div className="block-card-header">
+                  <span>{stepTypeMeta(selectedStep.type).label}</span>
+                  <small>{stepTypeMeta(selectedStep.type).hint}</small>
+                </div>
                 <label>
-                  <span>類型</span>
+                  <span>這一步要做什麼</span>
                   <select
                     value={selectedStep.type}
                     onChange={(event) => updateSelectedStep('type', event.target.value)}
                   >
-                    <option value="ai">ai</option>
-                    <option value="shell">shell</option>
-                    <option value="tool-or-shell">tool-or-shell</option>
-                    <option value="tool-or-code-edit">tool-or-code-edit</option>
-                    <option value="file">file</option>
-                    <option value="code-edit">code-edit</option>
+                    <option value="ai">{stepTypeMeta('ai').label} · ai</option>
+                    <option value="shell">{stepTypeMeta('shell').label} · shell</option>
+                    <option value="tool-or-shell">{stepTypeMeta('tool-or-shell').label} · tool-or-shell</option>
+                    <option value="tool-or-code-edit">{stepTypeMeta('tool-or-code-edit').label} · tool-or-code-edit</option>
+                    <option value="file">{stepTypeMeta('file').label} · file</option>
+                    <option value="code-edit">{stepTypeMeta('code-edit').label} · code-edit</option>
                   </select>
                 </label>
                 <label>
-                  <span>執行條件</span>
+                  <span>什麼時候做</span>
                   <input
                     value={selectedStep.when ?? ''}
                     onChange={(event) => updateSelectedStep('when', event.target.value)}
@@ -596,7 +628,7 @@ function App() {
                   />
                 </label>
                 <label>
-                  <span>輸出名稱</span>
+                  <span>完成後叫什麼名字</span>
                   <input
                     value={selectedStep.output ?? ''}
                     onChange={(event) => updateSelectedStep('output', event.target.value)}
@@ -614,7 +646,8 @@ function App() {
         <section className="editor-panel">
           <div className="panel-title">
             <FileCode2 size={16} />
-            workflow.yaml
+            進階流程原始檔
+            <span className="title-note">workflow.yaml</span>
             {isDirty && <span className="title-note dirty">尚未儲存</span>}
             <button className="icon-action" type="button" onClick={() => project && setEditorValue(project.rawYaml)} disabled={!isDirty}>
               <RotateCcw size={14} />
@@ -651,7 +684,12 @@ function App() {
             </div>
             {selectedWorkflowSummary && (
               <div className="run-inputs">
-                <div className="run-input-title">{selectedWorkflow} 的輸入欄位</div>
+                <div className="run-input-title">
+                  <span>{selectedWorkflow} 的輸入欄位</span>
+                  {hasRunInputExamples && (
+                    <button type="button" onClick={fillRunInputExamples}>套用範例</button>
+                  )}
+                </div>
                 {[
                   ...selectedWorkflowSummary.requiredInputs.map((name) => ({ name, required: true })),
                   ...selectedWorkflowSummary.optionalInputs.map((name) => ({ name, required: false })),
@@ -661,7 +699,7 @@ function App() {
                     <input
                       value={runInputValues[input.name] ?? ''}
                       onChange={(event) => updateRunInput(input.name, event.target.value)}
-                      placeholder={input.required ? '必填' : '選填'}
+                      placeholder={inputPlaceholder(input.name, input.required, selectedWorkflowSummary)}
                     />
                   </label>
                 ))}
@@ -689,8 +727,9 @@ function App() {
             <div className="panel-title">
               <Workflow size={16} />
               執行狀態
-              {selectedRun && <span className="title-note">{selectedRun.runId}</span>}
+              {selectedRun && <span className="title-note">執行紀錄：{selectedRun.runId}</span>}
             </div>
+            <StepLegend compact />
             {runGraphSource ? <MermaidChart chart={runGraphSource} /> : <EmptyState loading={loading} />}
             {selectedRun && (
               <RunDetails run={selectedRun} state={selectedRunState} />
@@ -706,12 +745,28 @@ function RunDetails({ run, state }: { run: WizardRunSummary; state: WizardRunSta
   const inputs = state?.inputs ?? {}
   const completedSteps = (state?.completed_steps ?? []).map(runStepId)
   const skippedSteps = (state?.skipped_steps ?? []).map(runStepId)
+  const doneCount = run.completedCount + run.skippedCount
+  const percent = run.totalSteps > 0 ? Math.round((doneCount / run.totalSteps) * 100) : 0
+  const progressTitle = run.currentStep
+    ? `正在第 ${Math.min(doneCount + 1, run.totalSteps)}/${run.totalSteps} 步`
+    : run.status === 'completed'
+      ? '流程已跑完'
+      : statusLabel(run.status)
   const pendingSteps = (state?.steps ?? []).map(runStepId).filter(
     (step) => !completedSteps.includes(step) && !skippedSteps.includes(step),
   )
 
   return (
     <div className="run-details">
+      <div className="run-progress">
+        <div>
+          <strong>{progressTitle}</strong>
+          <span>{run.currentStep ?? statusLabel(run.status)}</span>
+        </div>
+        <div className="progress-track" aria-label={`執行進度 ${percent}%`}>
+          <div style={{ width: `${percent}%` }} />
+        </div>
+      </div>
       <div className="run-detail-grid">
         <span>狀態</span>
         <strong>{statusLabel(run.status)}</strong>
@@ -806,6 +861,73 @@ function EmptyState({ loading }: { loading: boolean }) {
   )
 }
 
+function StarterGuide({
+  project,
+  selectedWorkflow,
+  selectedRun,
+  requiredInputCount,
+}: {
+  project: ProjectDetail | null
+  selectedWorkflow: string
+  selectedRun?: WizardRunSummary
+  requiredInputCount: number
+}) {
+  const items = [
+    {
+      title: '選一個專案',
+      detail: project ? project.name : '先從左邊挑一個接入 workflow 的專案',
+      done: Boolean(project),
+    },
+    {
+      title: '挑一條流程',
+      detail: selectedWorkflow || '像選 Scratch 作品一樣，先挑要跑的流程',
+      done: Boolean(selectedWorkflow),
+    },
+    {
+      title: '按開始執行',
+      detail: selectedRun
+        ? `${statusLabel(selectedRun.status)} · ${selectedRun.completedCount + selectedRun.skippedCount}/${selectedRun.totalSteps}`
+        : requiredInputCount > 0
+          ? `先填 ${requiredInputCount} 個必填欄位，再按上方的開始執行`
+          : '可以直接按上方的開始執行',
+      done: Boolean(selectedRun),
+    },
+  ]
+
+  return (
+    <section className="starter-guide" aria-label="快速開始">
+      {items.map((item, index) => (
+        <div className={`starter-step ${item.done ? 'done' : ''}`} key={item.title}>
+          <span>{index + 1}</span>
+          <div>
+            <strong>{item.title}</strong>
+            <small>{item.detail}</small>
+          </div>
+        </div>
+      ))}
+    </section>
+  )
+}
+
+function StepLegend({ compact = false }: { compact?: boolean }) {
+  const items = compact
+    ? ['ai', 'shell', 'code-edit', 'file']
+    : ['ai', 'shell', 'tool-or-shell', 'tool-or-code-edit', 'code-edit', 'file']
+  return (
+    <div className={`step-legend ${compact ? 'compact' : ''}`}>
+      {items.map((type) => {
+        const meta = stepTypeMeta(type)
+        return (
+          <span className={meta.className} key={type}>
+            <i />
+            {meta.label}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init)
   const text = await response.text()
@@ -818,6 +940,16 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+function friendlyErrorMessage(error: unknown): string {
+  const message = errorMessage(error)
+  if (message.includes('缺少必要輸入')) return `${message}。請把有 * 的格子填完再開始。`
+  if (message.includes('workflow content is empty')) return 'workflow 內容是空的。請先放入流程內容再驗證或儲存。'
+  if (message.includes('Unknown project')) return '找不到這個專案。請重新掃描後再試一次。'
+  if (message.includes('timed out') || message.includes('timeout')) return '執行等太久了。請確認 ai-mc 指令沒有卡住，再重新試一次。'
+  if (message.includes('ENOENT')) return '找不到需要的檔案或指令。請確認專案路徑和 ai-mc CLI 設定正確。'
+  return message
 }
 
 function formatDate(value: string): string {
@@ -846,6 +978,52 @@ function statusLabel(status: string): string {
     cancelled: '已取消',
   }
   return labels[status] ?? status
+}
+
+function stepTypeMeta(type: string): { label: string; hint: string; className: string } {
+  const map: Record<string, { label: string; hint: string; className: string }> = {
+    ai: {
+      label: '請 AI 想一想',
+      hint: '適合整理、判斷、寫說明',
+      className: 'type-ai',
+    },
+    shell: {
+      label: '請電腦執行指令',
+      hint: '適合跑測試、建置、查狀態',
+      className: 'type-shell',
+    },
+    'tool-or-shell': {
+      label: '用工具或指令',
+      hint: '可以交給工具，也可以跑命令',
+      className: 'type-tool',
+    },
+    'tool-or-code-edit': {
+      label: '用工具或改檔案',
+      hint: '適合讓 AI 實作一小段改動',
+      className: 'type-edit',
+    },
+    file: {
+      label: '讀寫檔案',
+      hint: '適合產生或檢查檔案',
+      className: 'type-file',
+    },
+    'code-edit': {
+      label: '修改程式',
+      hint: '適合真的改程式碼',
+      className: 'type-edit',
+    },
+  }
+  return map[type] ?? {
+    label: type,
+    hint: '自訂步驟類型',
+    className: 'type-tool',
+  }
+}
+
+function inputPlaceholder(inputName: string, required: boolean, summary: WorkflowSummary): string {
+  const example = summary.inputExamples?.[inputName]
+  if (example) return `例：${example}`
+  return required ? '必填' : '選填'
 }
 
 function seedRunInputs(summary?: WorkflowSummary): Record<string, string> {

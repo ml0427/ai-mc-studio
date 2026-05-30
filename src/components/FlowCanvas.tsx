@@ -1,7 +1,15 @@
 import { useRef, useState, type ReactNode } from 'react'
 import { GitBranch, LayoutDashboard, MousePointer2, Workflow } from 'lucide-react'
 import { useFlowCanvasLayout } from '../hooks/useFlowCanvasLayout'
-import { FLOW_NODE_HEIGHT, FLOW_NODE_WIDTH, flowCanvasSize } from '../lib/flowLayout'
+import {
+  FLOW_ENTRY_Y,
+  FLOW_MAIN_X,
+  FLOW_NODE_HEIGHT,
+  FLOW_NODE_WIDTH,
+  flowCanvasSize,
+  flowPortPoint,
+  type FlowPortSide,
+} from '../lib/flowLayout'
 import type { ProjectDetail, StepTemplate, WorkflowStep } from '../types/workflow'
 import { AiGuideDraft } from './AiGuideDraft'
 import { EmptyState } from './EmptyState'
@@ -41,6 +49,10 @@ export function FlowCanvas({
   })
   const surfaceRef = useRef<HTMLDivElement | null>(null)
   const [dragging, setDragging] = useState<{ stepId: string; offsetX: number; offsetY: number } | null>(null)
+  const [draftConnector, setDraftConnector] = useState<{
+    from: { x: number; y: number }
+    to: { x: number; y: number }
+  } | null>(null)
   const collapsedIndex = steps.findIndex((step) => layout.nodes[step.id]?.collapsed)
   const visibleSteps = collapsedIndex >= 0 ? steps.slice(0, collapsedIndex + 1) : steps
   const canvasSize = flowCanvasSize(visibleSteps, layout)
@@ -57,6 +69,13 @@ export function FlowCanvas({
   }
 
   function moveDrag(event: React.PointerEvent<HTMLElement>) {
+    if (draftConnector) {
+      const rect = event.currentTarget.getBoundingClientRect()
+      setDraftConnector((current) => current
+        ? { ...current, to: { x: event.clientX - rect.left, y: event.clientY - rect.top } }
+        : current)
+      return
+    }
     if (!dragging) return
     const rect = event.currentTarget.getBoundingClientRect()
     setNodePosition(
@@ -64,6 +83,20 @@ export function FlowCanvas({
       event.clientX - rect.left - dragging.offsetX,
       event.clientY - rect.top - dragging.offsetY,
     )
+  }
+
+  function startConnector(stepId: string, side: FlowPortSide, clientX: number, clientY: number) {
+    const node = layout.nodes[stepId]
+    const rect = surfaceRef.current?.getBoundingClientRect()
+    if (!node || !rect) return
+    const from = flowPortPoint(node, side)
+    setDraftConnector({
+      from,
+      to: {
+        x: clientX - rect.left,
+        y: clientY - rect.top,
+      },
+    })
   }
 
   return (
@@ -105,13 +138,24 @@ export function FlowCanvas({
               ref={surfaceRef}
               style={{ width: canvasSize.width, height: canvasSize.height }}
               onPointerMove={moveDrag}
-              onPointerUp={() => setDragging(null)}
-              onPointerLeave={() => setDragging(null)}
+              onPointerUp={() => {
+                setDragging(null)
+                setDraftConnector(null)
+              }}
+              onPointerLeave={() => {
+                setDragging(null)
+                setDraftConnector(null)
+              }}
             >
               <FlowEdges steps={visibleSteps} layout={layout} />
+              {draftConnector && (
+                <svg className="flow-draft-connector" aria-hidden="true">
+                  <path d={`M ${draftConnector.from.x} ${draftConnector.from.y} L ${draftConnector.to.x} ${draftConnector.to.y}`} />
+                </svg>
+              )}
               <article
                 className="flow-entry-node"
-                style={{ left: 42, top: 238, width: FLOW_NODE_WIDTH, minHeight: FLOW_NODE_HEIGHT }}
+                style={{ left: FLOW_MAIN_X, top: FLOW_ENTRY_Y, width: FLOW_NODE_WIDTH, minHeight: FLOW_NODE_HEIGHT }}
               >
                 <div className="flow-node-top">
                   <span className="flow-node-index">入口</span>
@@ -134,6 +178,7 @@ export function FlowCanvas({
                   selected={step.id === selectedStepId}
                   step={step}
                   onSelect={onSelectStep}
+                  onStartConnector={startConnector}
                   onStartDrag={startDrag}
                   onToggleCollapsed={toggleCollapsed}
                 />

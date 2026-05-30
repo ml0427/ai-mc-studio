@@ -1,7 +1,14 @@
 import { ChevronDown, ChevronRight, Grip, Waypoints } from 'lucide-react'
 import { stepTypeMeta } from '../data/stepTemplates'
-import { FLOW_NODE_HEIGHT, FLOW_NODE_WIDTH, type FlowNodeLayout } from '../lib/flowLayout'
+import { FLOW_NODE_HEIGHT, FLOW_NODE_WIDTH, type FlowNodeLayout, type FlowPortSide } from '../lib/flowLayout'
 import type { WorkflowStep } from '../types/workflow'
+
+const flowPorts: { side: FlowPortSide; label: string }[] = [
+  { side: 'top', label: '上方連線點' },
+  { side: 'right', label: '右側連線點' },
+  { side: 'bottom', label: '下方連線點' },
+  { side: 'left', label: '左側連線點' },
+]
 
 export function FlowNode({
   step,
@@ -11,6 +18,7 @@ export function FlowNode({
   layout,
   selected,
   onSelect,
+  onStartConnector,
   onStartDrag,
   onToggleCollapsed,
 }: {
@@ -21,6 +29,7 @@ export function FlowNode({
   layout: FlowNodeLayout
   selected: boolean
   onSelect: (stepId: string) => void
+  onStartConnector: (stepId: string, side: FlowPortSide, clientX: number, clientY: number) => void
   onStartDrag: (stepId: string, clientX: number, clientY: number) => void
   onToggleCollapsed: (stepId: string) => void
 }) {
@@ -56,6 +65,23 @@ export function FlowNode({
         }
       }}
     >
+      {flowPorts.map((port) => (
+        <button
+          aria-label={port.label}
+          className={`flow-port ${port.side}`}
+          key={port.side}
+          tabIndex={-1}
+          title={port.label}
+          type="button"
+          onClick={(event) => event.stopPropagation()}
+          onPointerDown={(event) => {
+            if (event.button !== 0) return
+            event.preventDefault()
+            event.stopPropagation()
+            onStartConnector(step.id, port.side, event.clientX, event.clientY)
+          }}
+        />
+      ))}
       <div className="flow-node-top">
         <span className="flow-node-index">{index + 1}</span>
         <strong>{step.id}</strong>

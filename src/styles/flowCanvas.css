@@ -146,7 +146,9 @@
 .flow-edge path {
   fill: none;
   stroke: #172033;
-  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.75;
 }
 
 .flow-edge.branch path {
@@ -162,6 +164,27 @@
 
 .flow-edges marker path {
   fill: #172033;
+}
+
+.flow-edges marker path.flow-branch-arrow {
+  fill: #b45309;
+}
+
+.flow-draft-connector {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.flow-draft-connector path {
+  fill: none;
+  stroke: #5b6ee1;
+  stroke-dasharray: 7 5;
+  stroke-linecap: round;
+  stroke-width: 3;
 }
 
 .flow-entry-node,
@@ -191,6 +214,72 @@
 .flow-node {
   padding: 9px 24px 9px 9px;
   cursor: grab;
+}
+
+.flow-port {
+  position: absolute;
+  z-index: 3;
+  width: 13px;
+  height: 13px;
+  border: 2px solid #172033;
+  border-radius: 999px;
+  background: #d7ff64;
+  cursor: crosshair;
+  padding: 0;
+  opacity: 0.78;
+  transition: opacity 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.flow-port:hover,
+.flow-port:focus-visible {
+  opacity: 1;
+  transform: scale(1.22);
+  box-shadow: 0 0 0 5px rgba(215, 255, 100, 0.32);
+  outline: 0;
+}
+
+.flow-port.top {
+  left: 50%;
+  top: -7px;
+  transform: translateX(-50%);
+}
+
+.flow-port.top:hover,
+.flow-port.top:focus-visible {
+  transform: translateX(-50%) scale(1.22);
+}
+
+.flow-port.right {
+  right: -7px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.flow-port.right:hover,
+.flow-port.right:focus-visible {
+  transform: translateY(-50%) scale(1.22);
+}
+
+.flow-port.bottom {
+  bottom: -7px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.flow-port.bottom:hover,
+.flow-port.bottom:focus-visible {
+  transform: translateX(-50%) scale(1.22);
+}
+
+.flow-port.left {
+  left: -7px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.flow-port.left:hover,
+.flow-port.left:focus-visible {
+  transform: translateY(-50%) scale(1.22);
 }
 
 .flow-node:active {
@@ -286,8 +375,8 @@
 
 .flow-node-arrow {
   position: absolute;
-  right: -16px;
-  top: 50%;
+  bottom: -17px;
+  right: 18px;
   z-index: 2;
   width: 31px;
   height: 31px;
@@ -299,7 +388,6 @@
   background: #ffffff;
   color: #172033;
   padding: 0;
-  transform: translateY(-50%);
   cursor: pointer;
   box-shadow: 0 7px 14px rgba(15, 23, 42, 0.16);
 }

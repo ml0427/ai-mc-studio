@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   defaultFlowLayout,
+  FLOW_LAYOUT_VERSION,
   mergeLayoutWithSteps,
   type FlowCanvasLayout,
 } from '../lib/flowLayout'
 import type { WorkflowStep } from '../types/workflow'
 
 function emptyLayout(): FlowCanvasLayout {
-  return { nodes: {} }
+  return { version: FLOW_LAYOUT_VERSION, nodes: {} }
 }
 
 export function useFlowCanvasLayout({
@@ -48,6 +49,7 @@ export function useFlowCanvasLayout({
 
   function setNodePosition(stepId: string, x: number, y: number) {
     setStoredLayout((current) => ({
+      version: FLOW_LAYOUT_VERSION,
       nodes: {
         ...current.nodes,
         [stepId]: {
@@ -61,6 +63,7 @@ export function useFlowCanvasLayout({
 
   function toggleCollapsed(stepId: string) {
     setStoredLayout((current) => ({
+      version: FLOW_LAYOUT_VERSION,
       nodes: {
         ...current.nodes,
         [stepId]: {

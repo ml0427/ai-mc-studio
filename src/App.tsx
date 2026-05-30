@@ -14,6 +14,7 @@ import {
   RotateCcw,
   Save,
   Search,
+  Undo2,
   Workflow,
 } from 'lucide-react'
 import YAML from 'yaml'
@@ -168,6 +169,7 @@ function App() {
   const [selectedStepId, setSelectedStepId] = useState('')
   const [graphSource, setGraphSource] = useState('')
   const [editorValue, setEditorValue] = useState('')
+  const [editorUndoStack, setEditorUndoStack] = useState<string[]>([])
   const [runs, setRuns] = useState<WizardRunSummary[]>([])
   const [selectedRunId, setSelectedRunId] = useState('')
   const [runGraphSource, setRunGraphSource] = useState('')
@@ -177,6 +179,7 @@ function App() {
   const [toast, setToast] = useState<ToastState | null>(null)
   const [loading, setLoading] = useState(false)
   const [showAdvancedEditor, setShowAdvancedEditor] = useState(false)
+  const editorValueRef = useRef(editorValue)
 
   const editorSpec = useMemo(() => parseWorkflowSpec(editorValue, project?.spec), [editorValue, project])
   const workflow = selectedWorkflow
@@ -187,6 +190,7 @@ function App() {
   const selectedWorkflowSummary = project?.workflows.find((item) => item.name === selectedWorkflow)
   const selectedRun = runs.find((run) => run.runId === selectedRunId)
   const isDirty = Boolean(project && editorValue !== project.rawYaml)
+  const canUndoEditor = editorUndoStack.length > 0
   const hasRunInputExamples = Boolean(
     selectedWorkflowSummary?.inputExamples
     && Object.keys(selectedWorkflowSummary.inputExamples).length > 0,
@@ -204,6 +208,33 @@ function App() {
   const displayedWorkflowGraph = isDirty && workflow && selectedWorkflow
     ? buildClientMermaid(selectedWorkflow, workflow)
     : graphSource
+
+  const commitEditorValue = useCallback((nextValue: string, options: { recordUndo?: boolean } = {}) => {
+    const currentValue = editorValueRef.current
+    if (nextValue === currentValue) return
+
+    if (options.recordUndo !== false) {
+      setEditorUndoStack((current) => [...current.slice(-99), currentValue])
+    }
+    editorValueRef.current = nextValue
+    setEditorValue(nextValue)
+  }, [])
+
+  const resetEditorHistory = useCallback((nextValue: string) => {
+    editorValueRef.current = nextValue
+    setEditorValue(nextValue)
+    setEditorUndoStack([])
+  }, [])
+
+  const undoEditorValue = useCallback(() => {
+    setEditorUndoStack((current) => {
+      const previousValue = current.at(-1)
+      if (previousValue === undefined) return current
+      editorValueRef.current = previousValue
+      setEditorValue(previousValue)
+      return current.slice(0, -1)
+    })
+  }, [])
 
   const loadRunGraph = useCallback(async (projectId: string, runId: string) => {
     try {
@@ -262,6 +293,22 @@ function App() {
   }, [])
 
   useEffect(() => {
+    function handleUndo(event: KeyboardEvent) {
+      const isUndo = (event.ctrlKey || event.metaKey)
+        && !event.shiftKey
+        && !event.altKey
+        && event.key.toLowerCase() === 'z'
+      if (!isUndo || editorUndoStack.length === 0) return
+      if (!shouldHandleWorkflowUndo(event.target)) return
+      event.preventDefault()
+      undoEditorValue()
+    }
+
+    window.addEventListener('keydown', handleUndo)
+    return () => window.removeEventListener('keydown', handleUndo)
+  }, [editorUndoStack.length, undoEditorValue])
+
+  useEffect(() => {
     if (!selectedProjectId) return
     let cancelled = false
 
@@ -272,7 +319,7 @@ function App() {
         if (cancelled) return
         setProject(detail)
         selectWorkflow(detail, detail.workflows[0]?.name ?? '')
-        setEditorValue(detail.rawYaml)
+        resetEditorHistory(detail.rawYaml)
         await loadRuns(detail.id)
       } catch (error) {
         if (!cancelled) setToast({ tone: 'error', message: friendlyErrorMessage(error) })
@@ -286,7 +333,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [loadRuns, selectedProjectId])
+  }, [loadRuns, resetEditorHistory, selectedProjectId])
 
   useEffect(() => {
     if (!project || !selectedWorkflow) return
@@ -424,7 +471,7 @@ function App() {
         },
       )
       setProject(result.project)
-      setEditorValue(result.project.rawYaml)
+      resetEditorHistory(result.project.rawYaml)
       selectWorkflow(result.project, selectedWorkflow)
       setToast({ tone: 'ok', message: `已儲存，備份在 ${result.backupPath}` })
       await loadProjects()
@@ -496,7 +543,7 @@ function App() {
       delete step[field]
     }
 
-    setEditorValue(YAML.stringify(parsed.spec))
+    commitEditorValue(YAML.stringify(parsed.spec))
   }
 
   function addStepFromTemplate(template: StepTemplate) {
@@ -520,7 +567,7 @@ function App() {
       output: nextId,
     }
     targetWorkflow.steps = [...currentSteps, nextStep]
-    setEditorValue(YAML.stringify(parsed.spec))
+    commitEditorValue(YAML.stringify(parsed.spec))
     setSelectedStepId(nextId)
     setToast({ tone: 'info', message: `已加入積木：${template.label}` })
   }
@@ -604,6 +651,10 @@ function App() {
             <button type="button" onClick={startRun} disabled={!project || !selectedWorkflow}>
               <Play size={16} />
               開始執行
+            </button>
+            <button type="button" onClick={undoEditorValue} disabled={!canUndoEditor}>
+              <Undo2 size={16} />
+              復原
             </button>
             <button type="button" className="primary" onClick={saveWorkflow} disabled={!project || !isDirty}>
               <Save size={16} />
@@ -759,7 +810,11 @@ function App() {
               <div className="panel-title">
                 <FileCode2 size={16} />
                 workflow.yaml
-                <button className="icon-action" type="button" onClick={() => project && setEditorValue(project.rawYaml)} disabled={!isDirty}>
+                <button className="icon-action" type="button" onClick={undoEditorValue} disabled={!canUndoEditor}>
+                  <Undo2 size={14} />
+                  復原
+                </button>
+                <button className="icon-action" type="button" onClick={() => project && commitEditorValue(project.rawYaml)} disabled={!isDirty}>
                   <RotateCcw size={14} />
                   還原
                 </button>
@@ -767,7 +822,7 @@ function App() {
               <textarea
                 spellCheck={false}
                 value={editorValue}
-                onChange={(event) => setEditorValue(event.target.value)}
+                onChange={(event) => commitEditorValue(event.target.value)}
               />
             </>
           )}
@@ -1318,6 +1373,14 @@ function readableValue(value: unknown): string {
       .join('、')
   }
   return String(value ?? '')
+}
+
+function shouldHandleWorkflowUndo(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return true
+  const tagName = target.tagName.toLowerCase()
+  const isTextInput = tagName === 'input' || tagName === 'textarea' || target.isContentEditable
+  if (!isTextInput) return true
+  return Boolean(target.closest('.step-editor') || target.closest('.editor-panel'))
 }
 
 function seedRunInputs(summary?: WorkflowSummary): Record<string, string> {

@@ -5,14 +5,8 @@ import {
   ChevronDown,
   ChevronRight,
   FileCode2,
-  FolderKanban,
   GitBranch,
-  History,
-  Play,
-  RefreshCw,
   RotateCcw,
-  Save,
-  Search,
   Undo2,
   Workflow,
 } from 'lucide-react'
@@ -21,19 +15,18 @@ import { STEP_TEMPLATES, stepTypeMeta } from './data/stepTemplates'
 import { BlockToolbox } from './components/BlockToolbox'
 import { EmptyState } from './components/EmptyState'
 import { MermaidChart } from './components/MermaidChart'
-import { RunDetails } from './components/RunDetails'
+import { ProjectRail } from './components/ProjectRail'
+import { RunPanel } from './components/RunPanel'
 import { StageBlocks } from './components/StageBlocks'
 import { StarterGuide } from './components/StarterGuide'
 import { StepSpecificFields } from './components/StepSpecificFields'
 import { SelectedStepSummary, StepLegend } from './components/StepSummary'
+import { WorkbenchHeader } from './components/WorkbenchHeader'
 import { useWorkflowEditor } from './hooks/useWorkflowEditor'
 import { buildClientMermaid } from './lib/workflowYaml'
 import {
   countLabel,
-  formatDate,
   friendlyErrorMessage,
-  inputPlaceholder,
-  statusLabel,
 } from './lib/format'
 import type {
   ProjectDetail,
@@ -410,87 +403,28 @@ function App() {
 
   return (
     <main className="studio-shell">
-      <aside className="project-rail">
-        <div className="brand-mark">
-          <div className="brand-icon"><Workflow size={22} /></div>
-          <div>
-            <span>AI-MC</span>
-            <strong>Studio</strong>
-          </div>
-        </div>
-
-        <button className="rail-action" type="button" onClick={loadProjects}>
-          <RefreshCw size={16} />
-          重新掃描
-        </button>
-
-        <div className="rail-caption">掃描根目錄 · 層數 {scanDepth}</div>
-        <div className="path-chip" title={projectsRoot}>{projectsRoot || '尚未載入'}</div>
-
-        <label className="rail-search">
-          <Search size={15} />
-          <input
-            value={projectFilter}
-            onChange={(event) => setProjectFilter(event.target.value)}
-            placeholder="搜尋專案或流程"
-          />
-        </label>
-
-        <section className="project-list" aria-label="專案列表">
-          {filteredProjects.map((item) => (
-            <button
-              className={`project-row ${item.id === selectedProjectId ? 'active' : ''}`}
-              key={item.id}
-              type="button"
-              onClick={() => selectProject(item.id)}
-            >
-              <FolderKanban size={17} />
-              <span>
-                <strong>{item.name}</strong>
-                <small>{countLabel(item.workflowCount, '條流程')} · {countLabel(item.stepCount, '個步驟')} · {countLabel(item.runCount, '次執行')}</small>
-              </span>
-            </button>
-          ))}
-          {filteredProjects.length === 0 && (
-            <div className="rail-empty">沒有符合的專案</div>
-          )}
-        </section>
-      </aside>
+      <ProjectRail
+        projectsRoot={projectsRoot}
+        scanDepth={scanDepth}
+        projectFilter={projectFilter}
+        filteredProjects={filteredProjects}
+        selectedProjectId={selectedProjectId}
+        onProjectFilterChange={setProjectFilter}
+        onLoadProjects={loadProjects}
+        onSelectProject={selectProject}
+      />
 
       <section className="workbench">
-        <header className="workbench-header">
-          <div>
-            <p className="eyebrow">AI 司儀中控台</p>
-            <h1>{project?.name ?? '選擇一個專案'}</h1>
-            <div className="subtle-path">{project?.rootPath ?? '正在等待掃描結果'}</div>
-            {project && (
-              <div className="project-metrics">
-                <span>{countLabel(project.workflowCount, '條流程')}</span>
-                <span>{countLabel(project.stepCount, '個步驟')}</span>
-                <span>{countLabel(project.runCount, '次執行')}</span>
-                <span>{project.latestRun ? statusLabel(project.latestRun.status) : '尚未執行'}</span>
-              </div>
-            )}
-          </div>
-          <div className="header-actions">
-            <button type="button" onClick={validateProject} disabled={!project}>
-              <CheckCircle2 size={16} />
-              {isDirty ? '驗證草稿' : '驗證'}
-            </button>
-            <button type="button" onClick={startRun} disabled={!project || !selectedWorkflow}>
-              <Play size={16} />
-              開始執行
-            </button>
-            <button type="button" onClick={undoEditorValue} disabled={!canUndoEditor}>
-              <Undo2 size={16} />
-              復原
-            </button>
-            <button type="button" className="primary" onClick={saveWorkflow} disabled={!project || !isDirty}>
-              <Save size={16} />
-              儲存流程{isDirty ? ' *' : ''}
-            </button>
-          </div>
-        </header>
+        <WorkbenchHeader
+          project={project}
+          selectedWorkflow={selectedWorkflow}
+          isDirty={isDirty}
+          canUndoEditor={canUndoEditor}
+          onValidateProject={validateProject}
+          onStartRun={startRun}
+          onUndoEditor={undoEditorValue}
+          onSaveWorkflow={saveWorkflow}
+        />
 
         <StarterGuide
           project={project}
@@ -671,79 +605,24 @@ function App() {
           )}
         </section>
 
-        <section className="run-panel">
-          <div className="run-list">
-            <div className="panel-title">
-              <History size={16} />
-              執行紀錄
-              <button
-                className="icon-action"
-                type="button"
-                onClick={() => project && loadRuns(project.id, selectedRunId)}
-                disabled={!project}
-              >
-                <RefreshCw size={14} />
-                刷新
-              </button>
-            </div>
-            {selectedWorkflowSummary && (
-              <div className="run-inputs">
-                <div className="run-input-title">
-                  <span>{selectedWorkflow} 的輸入欄位</span>
-                  {hasRunInputExamples && (
-                    <button type="button" onClick={fillRunInputExamples}>套用範例</button>
-                  )}
-                </div>
-                {[
-                  ...selectedWorkflowSummary.requiredInputs.map((name) => ({ name, required: true })),
-                  ...selectedWorkflowSummary.optionalInputs.map((name) => ({ name, required: false })),
-                ].map((input) => (
-                  <label key={input.name}>
-                    <span>{input.name}{input.required ? ' *' : ''}</span>
-                    <input
-                      value={runInputValues[input.name] ?? ''}
-                      onChange={(event) => updateRunInput(input.name, event.target.value)}
-                      placeholder={inputPlaceholder(input.name, input.required, selectedWorkflowSummary)}
-                    />
-                  </label>
-                ))}
-                {selectedWorkflowSummary.requiredInputs.length + selectedWorkflowSummary.optionalInputs.length === 0 && (
-                  <div className="mini-empty">這條流程沒有輸入欄位，可以直接開始執行。</div>
-                )}
-              </div>
-            )}
-            {runs.length === 0 ? (
-              <div className="mini-empty">目前沒有執行紀錄，按「開始執行」。</div>
-            ) : runs.map((run) => (
-              <button
-                className={`run-row ${run.runId === selectedRunId ? 'active' : ''}`}
-                key={run.runId}
-                type="button"
-                onClick={() => selectRun(run.runId)}
-              >
-                <strong>{run.workflow}</strong>
-                <span>{run.currentStep ?? statusLabel(run.status)}</span>
-                <small>{run.completedCount + run.skippedCount}/{run.totalSteps} · {formatDate(run.updatedAt)}</small>
-              </button>
-            ))}
-          </div>
-          <div className="run-graph">
-            <div className="panel-title">
-              <Workflow size={16} />
-              執行狀態
-              {selectedRun && <span className="title-note">執行紀錄：{selectedRun.runId}</span>}
-            </div>
-            <StepLegend compact />
-            {runGraphSource ? <MermaidChart chart={runGraphSource} /> : <EmptyState loading={loading} />}
-            {selectedRun && (
-              <RunDetails
-                run={selectedRun}
-                state={selectedRunState}
-                onSelectStep={setSelectedStepId}
-              />
-            )}
-          </div>
-        </section>
+        <RunPanel
+          project={project}
+          selectedWorkflow={selectedWorkflow}
+          selectedWorkflowSummary={selectedWorkflowSummary}
+          hasRunInputExamples={hasRunInputExamples}
+          runInputValues={runInputValues}
+          runs={runs}
+          selectedRunId={selectedRunId}
+          selectedRun={selectedRun}
+          selectedRunState={selectedRunState}
+          runGraphSource={runGraphSource}
+          loading={loading}
+          onFillRunInputExamples={fillRunInputExamples}
+          onUpdateRunInput={updateRunInput}
+          onRefreshRuns={() => project && loadRuns(project.id, selectedRunId)}
+          onSelectRun={selectRun}
+          onSelectStep={setSelectedStepId}
+        />
       </section>
     </main>
   )

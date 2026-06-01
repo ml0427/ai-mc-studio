@@ -1,469 +1,726 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import {
-  AlertTriangle,
-  CheckCircle2,
+  addEdge,
+  Background,
+  Controls,
+  Handle,
+  MarkerType,
+  MiniMap,
+  Position,
+  ReactFlow,
+  ReactFlowProvider,
+  reconnectEdge,
+  useEdgesState,
+  useNodesState,
+  useReactFlow,
+  type Connection,
+  type Edge,
+  type Node,
+  type NodeProps,
+  type OnReconnect,
+} from '@xyflow/react'
+import {
+  Bot,
   ChevronDown,
-  ChevronRight,
-  FileCode2,
-  RotateCcw,
-  Undo2,
+  ChevronUp,
+  Circle,
+  FileInput,
+  GitBranch,
+  Hand,
+  PanelRight,
+  Plus,
+  Route,
+  Square,
 } from 'lucide-react'
-import { api } from './api/studioApi'
-import { FlowCanvas } from './components/FlowCanvas'
-import { ProjectRail } from './components/ProjectRail'
-import { RunPanel } from './components/RunPanel'
-import { StepInspector } from './components/StepInspector'
-import { TaskLaunchPanel } from './components/TaskLaunchPanel'
-import { WorkbenchHeader } from './components/WorkbenchHeader'
-import { useProjects } from './hooks/useProjects'
-import { useRuns } from './hooks/useRuns'
-import { useWorkflowEditor } from './hooks/useWorkflowEditor'
-import {
-  friendlyErrorMessage,
-} from './lib/format'
-import type {
-  ProjectDetail,
-  ToastState,
-  ValidationResult,
-  WizardRunSummary,
-  WorkflowStep,
-  WorkflowSummary,
-} from './types/workflow'
-import './App.css'
+import YAML from 'yaml'
 
-function App() {
-  const [selectedWorkflow, setSelectedWorkflow] = useState('')
-  const [selectedStepId, setSelectedStepId] = useState('')
-  const [runInputValues, setRunInputValues] = useState<Record<string, string>>({})
-  const [runStartConfirm, setRunStartConfirm] = useState<{
-    missingInputs: string[]
-    outputs: string[]
-    stepCount: number
-  } | null>(null)
-  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null)
-  const [toast, setToast] = useState<ToastState | null>(null)
-  const [showAdvancedEditor, setShowAdvancedEditor] = useState(false)
-  const [showLegacyRunTools, setShowLegacyRunTools] = useState(false)
-  const {
-    projectsRoot,
-    scanDepth,
-    projectFilter,
-    filteredProjects,
-    selectedProjectId,
-    project,
-    loadingProjects,
-    loadProjects,
-    selectProject: requestProjectSelection,
-    setProject,
-    setProjectFilter,
-  } = useProjects({
-    setToast,
-    onProjectLoaded: (detail) => {
-      selectWorkflow(detail, detail.workflows[0]?.name ?? '')
-      resetEditorHistory(detail.rawYaml)
+type WorkflowNodeKind = 'start' | 'ai_task' | 'condition' | 'human_check' | 'output'
+
+type WorkflowNodeData = {
+  kind: WorkflowNodeKind
+  title: string
+  description: string
+  input: string
+  output: string
+}
+
+type WorkflowNode = Node<WorkflowNodeData, 'workflowNode'>
+type WorkflowEdge = Edge
+type EditableField = keyof Pick<WorkflowNodeData, 'title' | 'description' | 'input' | 'output'>
+type PreviewMode = 'aiMc' | 'canvas'
+
+type AiMcWorkflowStep = {
+  id: string
+  type: string
+  title?: string
+  description?: string
+  when?: string
+  input?: string | string[]
+  output?: string
+  blocks_downstream?: boolean
+}
+
+type AiMcWorkflowSpec = {
+  schema_version?: string
+  name?: string
+  description?: string
+  workflows?: Record<string, {
+    description?: string
+    steps?: AiMcWorkflowStep[]
+  }>
+}
+
+const nodeTemplates: Array<{
+  kind: WorkflowNodeKind
+  title: string
+  description: string
+  icon: typeof Circle
+}> = [
+  { kind: 'start', title: '起點', description: '流程從這裡開始。', icon: Circle },
+  { kind: 'ai_task', title: 'AI 任務', description: '請 AI 做一件事，例如整理、判斷或產生內容。', icon: Bot },
+  { kind: 'condition', title: '條件分支', description: '根據條件決定下一步要走哪條路。', icon: GitBranch },
+  { kind: 'human_check', title: '人工確認', description: '暫停一下，讓人確認後再繼續。', icon: Hand },
+  { kind: 'output', title: '輸出結果', description: '整理最後要留下或交付的內容。', icon: Square },
+]
+
+const nodeTypeLabels: Record<WorkflowNodeKind, string> = {
+  start: '起點',
+  ai_task: 'AI 任務',
+  condition: '條件',
+  human_check: '人工確認',
+  output: '輸出',
+}
+
+const initialNodes: WorkflowNode[] = [
+  {
+    id: 'start-1',
+    type: 'workflowNode',
+    position: { x: 120, y: 120 },
+    data: {
+      kind: 'start',
+      title: '起點',
+      description: '流程從這裡開始。',
+      input: '',
+      output: 'start',
     },
-  })
-  const loading = loadingProjects
-  const {
-    runs,
-    selectedRunId,
-    selectedRun,
-    selectedRunState,
-    runGraphSource,
-    loadRuns,
-    refreshRuns,
-    selectRun,
-  } = useRuns({
-    project,
-    setToast,
-  })
-  const {
-    editorValue,
-    editorUndoStack,
-    editorSpec,
-    workflow,
-    steps,
-    selectedStep,
-    isDirty,
-    canUndoEditor,
-    commitEditorValue,
-    resetEditorHistory,
-    undoEditorValue,
-    updateSelectedStep,
-    updateSelectedStepPatch,
-    addStepFromTemplate,
-  } = useWorkflowEditor({
-    project,
-    selectedWorkflow,
-    selectedStepId,
-    setSelectedStepId,
-    setToast,
-  })
-  const selectedWorkflowSummary = project?.workflows.find((item) => item.name === selectedWorkflow)
-  const hasRunInputExamples = Boolean(
-    selectedWorkflowSummary?.inputExamples
-    && Object.keys(selectedWorkflowSummary.inputExamples).length > 0,
+  },
+]
+
+const initialEdges: WorkflowEdge[] = []
+const nodeTypes = { workflowNode: WorkflowNodeCard }
+const defaultEdgeOptions = {
+  animated: true,
+  reconnectable: true,
+  type: 'smoothstep',
+  markerEnd: {
+    type: MarkerType.ArrowClosed,
+    width: 18,
+    height: 18,
+    color: '#8fffe0',
+  },
+  style: {
+    stroke: '#8fffe0',
+    strokeWidth: 2.5,
+  },
+} satisfies Partial<WorkflowEdge>
+
+const sampleImport = `schema_version: "1"
+name: sample-flow
+description: 匯入測試
+workflows:
+  main:
+    description: 主要流程
+    steps:
+      - id: collect_context
+        type: ai
+        output: context
+      - id: decide_path
+        type: ai
+        when: context needs review
+        input: context
+        output: decision
+      - id: final_output
+        type: file
+        input: decision
+        output: report
+`
+
+export function App() {
+  return (
+    <ReactFlowProvider>
+      <WorkflowEditor />
+    </ReactFlowProvider>
+  )
+}
+
+function WorkflowEditor() {
+  const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode>(initialNodes)
+  const [edges, setEdges, onEdgesChange] = useEdgesState<WorkflowEdge>(initialEdges)
+  const [selectedNodeId, setSelectedNodeId] = useState<string>('start-1')
+  const [showJsonPreview, setShowJsonPreview] = useState(true)
+  const [previewMode, setPreviewMode] = useState<PreviewMode>('aiMc')
+  const [showImportPanel, setShowImportPanel] = useState(false)
+  const [importText, setImportText] = useState('')
+  const [importMessage, setImportMessage] = useState('')
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const { fitView, screenToFlowPosition } = useReactFlow<WorkflowNode, WorkflowEdge>()
+
+  const selectedNode = useMemo(
+    () => nodes.find((node) => node.id === selectedNodeId) ?? null,
+    [nodes, selectedNodeId],
   )
 
-  useEffect(() => {
-    function handleUndo(event: KeyboardEvent) {
-      const isUndo = (event.ctrlKey || event.metaKey)
-        && !event.shiftKey
-        && !event.altKey
-        && event.key.toLowerCase() === 'z'
-      if (!isUndo || editorUndoStack.length === 0) return
-      if (!shouldHandleWorkflowUndo(event.target)) return
-      event.preventDefault()
-      undoEditorValue()
+  const canvasPreview = useMemo(() => JSON.stringify({
+    nodes: nodes.map(({ id, type, position, data }) => ({ id, type, position, data })),
+    edges: edges.map(({ id, source, sourceHandle, target, targetHandle, markerEnd, reconnectable }) => ({
+      id,
+      source,
+      sourceHandle,
+      target,
+      targetHandle,
+      markerEnd,
+      reconnectable,
+    })),
+  }, null, 2), [edges, nodes])
+  const aiMcPreview = useMemo(() => JSON.stringify(toAiMcWorkflowSpec(nodes, edges), null, 2), [edges, nodes])
+  const activePreview = previewMode === 'aiMc' ? aiMcPreview : canvasPreview
+
+  const onConnect = useCallback((connection: Connection) => {
+    const sourceNode = nodes.find((node) => node.id === connection.source)
+    setEdges((currentEdges) => addEdge({
+      ...connection,
+      ...edgeOptionsForConnection(sourceNode?.data.kind, connection.sourceHandle),
+      id: `${connection.source}:${connection.sourceHandle}->${connection.target}:${connection.targetHandle}`,
+    }, currentEdges))
+  }, [nodes, setEdges])
+
+  const onReconnect = useCallback<OnReconnect<WorkflowEdge>>((oldEdge, newConnection) => {
+    const sourceNode = nodes.find((node) => node.id === newConnection.source)
+    const nextEdge = {
+      ...oldEdge,
+      ...newConnection,
+      ...edgeOptionsForConnection(sourceNode?.data.kind, newConnection.sourceHandle),
+      id: `${newConnection.source}:${newConnection.sourceHandle}->${newConnection.target}:${newConnection.targetHandle}`,
     }
+    setEdges((currentEdges) => reconnectEdge(oldEdge, nextEdge, currentEdges))
+  }, [nodes, setEdges])
 
-    window.addEventListener('keydown', handleUndo)
-    return () => window.removeEventListener('keydown', handleUndo)
-  }, [editorUndoStack.length, undoEditorValue])
-
-  useEffect(() => {
-    function confirmLeave(event: BeforeUnloadEvent) {
-      if (!isDirty) return
-      event.preventDefault()
-      event.returnValue = ''
-    }
-
-    window.addEventListener('beforeunload', confirmLeave)
-    return () => window.removeEventListener('beforeunload', confirmLeave)
-  }, [isDirty])
-
-  function runMissingInputs() {
-    if (!selectedWorkflowSummary) return []
-    return selectedWorkflowSummary.requiredInputs.filter(
-      (inputName) => !runInputValues[inputName]?.trim(),
-    )
-  }
-
-  function openRunStartConfirm() {
-    if (!project || !selectedWorkflowSummary) return
-    const missingInputs = runMissingInputs()
-    setRunStartConfirm({
-      missingInputs,
-      outputs: runOutputNames(steps),
-      stepCount: steps.length || selectedWorkflowSummary.stepCount,
+  function addNode(kind: WorkflowNodeKind) {
+    const template = nodeTemplates.find((item) => item.kind === kind) ?? nodeTemplates[1]
+    const nextNumber = nodes.filter((node) => node.data.kind === kind).length + 1
+    const id = `${kind}-${nextNumber}`
+    const position = screenToFlowPosition({
+      x: 360 + (nodes.length % 3) * 70,
+      y: 180 + (nodes.length % 4) * 55,
     })
-    if (missingInputs.length > 0) {
-      setToast({ tone: 'error', message: `先補資料：${missingInputs.join('、')}` })
+
+    const nextNode: WorkflowNode = {
+      id,
+      type: 'workflowNode',
+      position,
+      data: {
+        kind,
+        title: template.title,
+        description: template.description,
+        input: '',
+        output: kind === 'start' ? 'start' : id,
+      },
+    }
+
+    setNodes((currentNodes) => [...currentNodes, nextNode])
+    setSelectedNodeId(id)
+  }
+
+  function importAiMcWorkflow() {
+    try {
+      const imported = parseAiMcWorkflow(importText)
+      setNodes(imported.nodes)
+      setEdges(imported.edges)
+      setSelectedNodeId(imported.nodes[0]?.id ?? '')
+      setPreviewMode('aiMc')
+      setShowJsonPreview(true)
+      setImportMessage(`已匯入 ${imported.workflowName}：${imported.stepCount} 個步驟`)
+      window.requestAnimationFrame(() => {
+        void fitView({ duration: 360, padding: 0.22 })
+      })
+    } catch (error) {
+      setImportMessage(error instanceof Error ? error.message : '匯入失敗，請檢查格式。')
     }
   }
 
-  async function confirmStartRun() {
-    if (!project || !selectedWorkflowSummary) return
-    const inputs: Record<string, string> = {}
-    const missingInputs = runMissingInputs()
-
-    if (missingInputs.length > 0) {
-      setRunStartConfirm({
-        missingInputs,
-        outputs: runOutputNames(steps),
-        stepCount: steps.length || selectedWorkflowSummary.stepCount,
-      })
-      setToast({ tone: 'error', message: `缺少必要輸入：${missingInputs.join(', ')}` })
-      return
-    }
-
-    for (const inputName of [
-      ...selectedWorkflowSummary.requiredInputs,
-      ...selectedWorkflowSummary.optionalInputs,
-    ]) {
-      const value = runInputValues[inputName]?.trim()
-      if (value) inputs[inputName] = value
-    }
+  async function loadImportFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
 
     try {
-      const result = await api<{ ok: boolean; runId?: string; runs: WizardRunSummary[] }>(
-        `/api/projects/${project.id}/runs`,
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ workflow: selectedWorkflow, inputs }),
-        },
-      )
-      setRunStartConfirm(null)
-      setToast({ tone: 'ok', message: `已建立 run：${result.runId ?? selectedWorkflow}` })
-      await loadRuns(project.id, result.runId)
-    } catch (error) {
-      setToast({ tone: 'error', message: friendlyErrorMessage(error) })
+      const content = await file.text()
+      setImportText(content)
+      setImportMessage(`已讀取 ${file.name}，按「匯入」套用到畫布。`)
+    } catch {
+      setImportMessage('讀取檔案失敗，請改用貼上文字。')
+    } finally {
+      event.target.value = ''
     }
   }
 
-  async function validateProject() {
-    if (!project) return
-    try {
-      const result = isDirty
-        ? await api<{ ok: boolean; output: string }>(`/api/projects/${project.id}/workflow/validate`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ content: editorValue }),
-        })
-        : await api<{ ok: boolean; output: string }>(`/api/projects/${project.id}/validate`, {
-          method: 'POST',
-        })
-      setValidationResult({
-        tone: 'ok',
-        title: `${isDirty ? '草稿' : '檔案'}驗證通過`,
-        output: result.output.trim(),
-      })
-      setToast({ tone: 'ok', message: `${isDirty ? '草稿' : '檔案'}驗證通過` })
-    } catch (error) {
-      const message = friendlyErrorMessage(error)
-      setValidationResult({
-        tone: 'error',
-        title: `${isDirty ? '草稿' : '檔案'}驗證失敗`,
-        output: message,
-      })
-      setToast({ tone: 'error', message })
-    }
-  }
-
-  async function saveWorkflow() {
-    if (!project) return
-    if (!isDirty) {
-      setToast({ tone: 'info', message: 'workflow.yaml 沒有變更' })
-      return
-    }
-    if (!window.confirm(`確定要儲存 ${project.name} 的 workflow.yaml？會先建立備份。`)) return
-
-    try {
-      const result = await api<{ ok: boolean; backupPath: string; project: ProjectDetail }>(
-        `/api/projects/${project.id}/workflow`,
-        {
-          method: 'PUT',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ content: editorValue, expectedHash: project.rawHash }),
-        },
-      )
-      setProject(result.project)
-      resetEditorHistory(result.project.rawYaml)
-      selectWorkflow(result.project, selectedWorkflow)
-      setToast({ tone: 'ok', message: `已儲存，備份在 ${result.backupPath}` })
-      await loadProjects()
-      await loadRuns(result.project.id, selectedRunId)
-    } catch (error) {
-      setToast({ tone: 'error', message: friendlyErrorMessage(error) })
-    }
-  }
-
-  function selectWorkflow(targetProject: ProjectDetail, workflowName: string) {
-    const nextWorkflow = targetProject.spec.workflows?.[workflowName]
-      ? workflowName
-      : targetProject.workflows[0]?.name ?? ''
-    const nextSummary = targetProject.workflows.find((item) => item.name === nextWorkflow)
-    setRunStartConfirm(null)
-    setSelectedWorkflow(nextWorkflow)
-    setSelectedStepId(targetProject.spec.workflows?.[nextWorkflow]?.steps?.[0]?.id ?? '')
-    setRunInputValues(seedRunInputs(nextSummary))
-  }
-
-  function selectProject(projectId: string) {
-    if (projectId === selectedProjectId) return
-    const canSwitch = !isDirty || window.confirm('目前 workflow.yaml 尚未儲存，確定要切換專案？')
-    if (canSwitch) setRunStartConfirm(null)
-    requestProjectSelection(projectId, canSwitch)
-  }
-
-  function locateStepOnStage(stepId: string) {
-    if (!stepId) return
-    setSelectedStepId(stepId)
-  }
-
-  function updateRunInput(inputName: string, value: string) {
-    setRunStartConfirm(null)
-    setRunInputValues((current) => ({
-      ...current,
-      [inputName]: value,
-    }))
-  }
-
-  function fillRunInputExamples() {
-    if (!selectedWorkflowSummary?.inputExamples) return
-    setRunStartConfirm(null)
-    setRunInputValues((current) => {
-      const next = { ...current }
-      for (const inputName of [
-        ...selectedWorkflowSummary.requiredInputs,
-        ...selectedWorkflowSummary.optionalInputs,
-      ]) {
-        const example = selectedWorkflowSummary.inputExamples?.[inputName]
-        if (example && !next[inputName]) next[inputName] = example
-      }
-      return next
-    })
+  function updateSelectedNode(field: EditableField, value: string) {
+    if (!selectedNode) return
+    setNodes((currentNodes) => currentNodes.map((node) => (
+      node.id === selectedNode.id
+        ? { ...node, data: { ...node.data, [field]: value } }
+        : node
+    )))
   }
 
   return (
-    <main className="studio-shell">
-      <ProjectRail
-        projectsRoot={projectsRoot}
-        scanDepth={scanDepth}
-        projectFilter={projectFilter}
-        filteredProjects={filteredProjects}
-        selectedProjectId={selectedProjectId}
-        onProjectFilterChange={setProjectFilter}
-        onLoadProjects={loadProjects}
-        onSelectProject={selectProject}
-      />
-
-      <section className="workbench">
-        <WorkbenchHeader
-          project={project}
-          selectedWorkflow={selectedWorkflow}
-          isDirty={isDirty}
-          canUndoEditor={canUndoEditor}
-          onValidateProject={validateProject}
-          onStartRun={() => {
-            setShowLegacyRunTools(true)
-            openRunStartConfirm()
-          }}
-          onUndoEditor={undoEditorValue}
-          onSaveWorkflow={saveWorkflow}
-        />
-
-        {toast && (
-          <div className={`toast ${toast.tone}`}>
-            {toast.tone === 'error' ? <AlertTriangle size={16} /> : <CheckCircle2 size={16} />}
-            <span>{toast.message}</span>
+    <main className={`app-shell ${showJsonPreview ? '' : 'json-hidden'}`}>
+      <aside className="toolbox-panel" aria-label="節點工具箱">
+        <div className="brand-block">
+          <Route size={24} />
+          <div>
+            <span>AI 流程圖</span>
+            <strong>拖拉式編輯器</strong>
           </div>
+        </div>
+
+        <button
+          className="import-toggle"
+          type="button"
+          onClick={() => setShowImportPanel((current) => !current)}
+        >
+          <FileInput size={16} />
+          匯入 ai-mc
+        </button>
+
+        {showImportPanel && (
+          <section className="import-panel" aria-label="匯入 ai-mc workflow">
+            <input
+              ref={fileInputRef}
+              className="file-input"
+              type="file"
+              accept=".yaml,.yml,.json,application/json,text/yaml,text/x-yaml"
+              onChange={(event) => void loadImportFile(event)}
+            />
+            <textarea
+              value={importText}
+              onChange={(event) => {
+                setImportText(event.target.value)
+                setImportMessage('')
+              }}
+              placeholder="貼上 workflow.yaml 或 JSON"
+              spellCheck={false}
+            />
+            <div className="import-actions">
+              <button type="button" onClick={() => fileInputRef.current?.click()}>
+                選檔案
+              </button>
+              <button type="button" onClick={() => setImportText(sampleImport)}>
+                放範例
+              </button>
+              <button type="button" onClick={importAiMcWorkflow} disabled={!importText.trim()}>
+                匯入
+              </button>
+            </div>
+            {importMessage && <p>{importMessage}</p>}
+          </section>
         )}
 
-        <FlowCanvas
-          key={`${project?.id ?? 'no-project'}:${selectedWorkflow}`}
-          project={project}
-          selectedWorkflow={selectedWorkflow}
-          selectedStepId={selectedStep?.id}
-          steps={steps}
-          loading={loading}
-          onSelectWorkflow={(workflowName) => project && selectWorkflow(project, workflowName)}
-          onSelectStep={setSelectedStepId}
-          onAddStep={addStepFromTemplate}
-          inspector={(
-            <StepInspector
-              steps={steps}
-              selectedStep={selectedStep}
-              workflow={workflow}
-              error={editorSpec.error}
-              onSelectStep={setSelectedStepId}
-              onUpdateStep={updateSelectedStep}
-              onPatchStep={updateSelectedStepPatch}
-            />
-          )}
-        />
+        <div className="toolbox-list">
+          {nodeTemplates.map((template) => {
+            const Icon = template.icon
+            return (
+              <button
+                className={`toolbox-node type-${template.kind}`}
+                key={template.kind}
+                type="button"
+                onClick={() => addNode(template.kind)}
+              >
+                <Icon size={18} />
+                <span>
+                  <strong>{template.title}</strong>
+                  <small>{template.description}</small>
+                </span>
+                <Plus size={16} />
+              </button>
+            )
+          })}
+        </div>
+      </aside>
 
-        <details
-          className="legacy-run-details"
-          open={showLegacyRunTools}
-          onToggle={(event) => setShowLegacyRunTools(event.currentTarget.open)}
+      <section className="canvas-panel" aria-label="流程圖畫布">
+        <button className="fit-view-button" type="button" onClick={() => void fitView({ duration: 320, padding: 0.22 })}>
+          整理畫面
+        </button>
+        <ReactFlow
+          colorMode="dark"
+          defaultEdgeOptions={defaultEdgeOptions}
+          edges={edges}
+          edgesReconnectable
+          fitView
+          nodes={nodes}
+          nodeTypes={nodeTypes}
+          reconnectRadius={10}
+          onConnect={onConnect}
+          onEdgesChange={onEdgesChange}
+          onNodesChange={onNodesChange}
+          onNodeClick={(_, node) => setSelectedNodeId(node.id)}
+          onPaneClick={() => setSelectedNodeId('')}
+          onReconnect={onReconnect}
         >
-          <summary>開始任務與執行紀錄</summary>
-          <TaskLaunchPanel
-            selectedWorkflow={selectedWorkflow}
-            selectedWorkflowSummary={selectedWorkflowSummary}
-            hasRunInputExamples={hasRunInputExamples}
-            runInputValues={runInputValues}
-            runStartConfirm={runStartConfirm}
-            steps={steps}
-            onFillRunInputExamples={fillRunInputExamples}
-            onOpenRunStartConfirm={openRunStartConfirm}
-            onCancelRunStartConfirm={() => setRunStartConfirm(null)}
-            onConfirmStartRun={() => void confirmStartRun()}
-            onUpdateRunInput={updateRunInput}
+          <Background color="#273248" gap={28} />
+          <Controls position="top-right" />
+          <MiniMap
+            maskColor="rgba(7, 10, 18, 0.72)"
+            nodeColor={(node) => nodeColor((node as WorkflowNode).data.kind)}
+            pannable
+            zoomable
           />
-          <RunPanel
-            project={project}
-            runs={runs}
-            selectedRunId={selectedRunId}
-            selectedRun={selectedRun}
-            selectedRunState={selectedRunState}
-            runGraphSource={runGraphSource}
-            stageStepIds={steps.map((step) => step.id)}
-            loading={loading}
-            onRefreshRuns={refreshRuns}
-            onSelectRun={selectRun}
-            onSelectStep={locateStepOnStage}
-          />
-        </details>
+        </ReactFlow>
+      </section>
 
-        <section className={`editor-panel advanced-panel ${showAdvancedEditor ? 'open' : ''}`}>
-          <button
-            className="advanced-toggle"
-            type="button"
-            onClick={() => setShowAdvancedEditor((current) => !current)}
-          >
-            {showAdvancedEditor ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-            <span>
-              <strong>進階流程原始檔</strong>
-              <small>需要直接調整 workflow.yaml 時再打開</small>
-            </span>
-            {isDirty && <i>尚未儲存</i>}
-          </button>
-          {showAdvancedEditor && (
-            <>
-              <div className="panel-title">
-                <FileCode2 size={16} />
-                workflow.yaml
-                <button className="icon-action" type="button" onClick={undoEditorValue} disabled={!canUndoEditor}>
-                  <Undo2 size={14} />
-                  復原
-                </button>
-                <button className="icon-action" type="button" onClick={() => project && commitEditorValue(project.rawYaml)} disabled={!isDirty}>
-                  <RotateCcw size={14} />
-                  還原
-                </button>
-              </div>
-              <textarea
-                spellCheck={false}
-                value={editorValue}
-                onChange={(event) => commitEditorValue(event.target.value)}
-              />
-            </>
-          )}
-          {validationResult && (
-            <div className={`validation-result ${validationResult.tone}`}>
-              <strong>{validationResult.title}</strong>
-              <pre>{validationResult.output || '通過'}</pre>
+      <aside className="settings-panel" aria-label="節點設定">
+        <div className="panel-title">
+          <PanelRight size={18} />
+          <strong>節點設定</strong>
+        </div>
+
+        {selectedNode ? (
+          <form className="settings-form">
+            <div className={`kind-pill type-${selectedNode.data.kind}`}>
+              {nodeTypeLabels[selectedNode.data.kind]}
             </div>
-          )}
-        </section>
+            <label>
+              <span>標題</span>
+              <input
+                value={selectedNode.data.title}
+                onChange={(event) => updateSelectedNode('title', event.target.value)}
+              />
+            </label>
+            <label>
+              <span>說明</span>
+              <textarea
+                value={selectedNode.data.description}
+                onChange={(event) => updateSelectedNode('description', event.target.value)}
+              />
+            </label>
+            <label>
+              <span>輸入</span>
+              <input
+                value={selectedNode.data.input}
+                onChange={(event) => updateSelectedNode('input', event.target.value)}
+                placeholder="例如：上一個節點的輸出"
+              />
+            </label>
+            <label>
+              <span>輸出</span>
+              <input
+                value={selectedNode.data.output}
+                onChange={(event) => updateSelectedNode('output', event.target.value)}
+                placeholder={selectedNode.id}
+              />
+            </label>
+          </form>
+        ) : (
+          <div className="empty-settings">
+            <strong>還沒選節點</strong>
+            <span>點一下畫布上的節點，就能在這裡編輯內容。</span>
+          </div>
+        )}
+      </aside>
 
+      <section className="json-panel" aria-label="目前流程資料">
+        <div className="json-title">
+          <div>
+            <strong>{previewMode === 'aiMc' ? 'ai-mc workflow 預覽' : '畫布資料'}</strong>
+            <span>{nodes.length} 個節點 / {edges.length} 條線</span>
+          </div>
+          <div className="preview-mode-tabs" role="tablist" aria-label="預覽格式">
+            <button
+              aria-selected={previewMode === 'aiMc'}
+              role="tab"
+              type="button"
+              onClick={() => setPreviewMode('aiMc')}
+            >
+              ai-mc 格式
+            </button>
+            <button
+              aria-selected={previewMode === 'canvas'}
+              role="tab"
+              type="button"
+              onClick={() => setPreviewMode('canvas')}
+            >
+              畫布資料
+            </button>
+          </div>
+          <button
+            className="json-toggle"
+            aria-expanded={showJsonPreview}
+            type="button"
+            onClick={() => setShowJsonPreview((current) => !current)}
+          >
+            {showJsonPreview ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
+            {showJsonPreview ? '隱藏下方欄位' : '顯示下方欄位'}
+          </button>
+        </div>
+        {showJsonPreview && <pre>{activePreview}</pre>}
       </section>
     </main>
   )
 }
 
-function shouldHandleWorkflowUndo(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return true
-  const tagName = target.tagName.toLowerCase()
-  const isTextInput = tagName === 'input' || tagName === 'textarea' || target.isContentEditable
-  if (!isTextInput) return true
-  return Boolean(target.closest('.step-editor') || target.closest('.editor-panel'))
-}
+function WorkflowNodeCard({ data, selected }: NodeProps<WorkflowNode>) {
+  if (data.kind === 'condition') {
+    return (
+      <article className={`workflow-node type-${data.kind} ${selected ? 'selected' : ''}`}>
+        <Handle id="top" type="target" position={Position.Top} />
+        <Handle id="right" type="source" position={Position.Right} />
+        <Handle id="bottom" type="source" position={Position.Bottom} />
+        <Handle id="left" type="target" position={Position.Left} />
 
-function seedRunInputs(summary?: WorkflowSummary): Record<string, string> {
-  const next: Record<string, string> = {}
-  if (!summary) return next
-
-  for (const inputName of [
-    ...summary.requiredInputs,
-    ...summary.optionalInputs,
-  ]) {
-    next[inputName] = ''
+        <span className="branch-label branch-yes">是</span>
+        <span className="branch-label branch-no">否</span>
+        <div className="condition-node-content">
+          <span>{nodeTypeLabels[data.kind]}</span>
+          <strong>{data.title || '條件分支'}</strong>
+          <p>{data.description || '填入判斷條件'}</p>
+        </div>
+      </article>
+    )
   }
 
-  return next
+  return (
+    <article className={`workflow-node type-${data.kind} ${selected ? 'selected' : ''}`}>
+      <Handle id="top" type="target" position={Position.Top} />
+      <Handle id="right" type="source" position={Position.Right} />
+      <Handle id="bottom" type="source" position={Position.Bottom} />
+      <Handle id="left" type="target" position={Position.Left} />
+
+      <div className="node-header">
+        <span>{nodeTypeLabels[data.kind]}</span>
+        <strong>{data.title || '未命名'}</strong>
+      </div>
+      <p>{data.description || '還沒有說明'}</p>
+    </article>
+  )
 }
 
-function runOutputNames(steps: WorkflowStep[]): string[] {
-  const outputs = new Set<string>()
-  for (const step of steps) {
-    const output = step.output?.trim()
-    if (output) outputs.add(output)
+function nodeColor(kind: WorkflowNodeKind): string {
+  if (kind === 'start') return '#89f7fe'
+  if (kind === 'ai_task') return '#a78bfa'
+  if (kind === 'condition') return '#fbbf24'
+  if (kind === 'human_check') return '#34d399'
+  return '#38bdf8'
+}
+
+function toAiMcWorkflowSpec(nodes: WorkflowNode[], edges: WorkflowEdge[]): AiMcWorkflowSpec {
+  const orderedNodes = orderWorkflowNodes(nodes, edges)
+  return {
+    schema_version: '1',
+    name: 'ai-flow-mvp',
+    description: '從拖拉式流程圖產生的 ai-mc workflow 草稿。',
+    workflows: {
+      main: {
+        description: '主要流程',
+        steps: orderedNodes
+          .filter((node) => node.data.kind !== 'start')
+          .map((node) => toAiMcStep(node)),
+      },
+    },
   }
-  return Array.from(outputs)
 }
 
-export default App
+function toAiMcStep(node: WorkflowNode): AiMcWorkflowStep {
+  const step: AiMcWorkflowStep = {
+    id: sanitizeStepId(node.id),
+    type: aiMcStepType(node.data.kind),
+  }
+  if (node.data.kind === 'condition' && node.data.description.trim()) {
+    step.when = node.data.description.trim()
+  }
+  if (node.data.input.trim()) {
+    step.input = parseInputList(node.data.input)
+  }
+  if (node.data.output.trim()) {
+    step.output = sanitizeStepId(node.data.output)
+  }
+  if (node.data.kind === 'human_check') {
+    step.blocks_downstream = true
+  }
+  return step
+}
+
+function parseAiMcWorkflow(value: string): {
+  nodes: WorkflowNode[]
+  edges: WorkflowEdge[]
+  stepCount: number
+  workflowName: string
+} {
+  const parsed = parseWorkflowText(value)
+  const workflows = parsed.workflows ?? {}
+  const workflowName = workflows.main ? 'main' : Object.keys(workflows)[0]
+  const workflow = workflowName ? workflows[workflowName] : null
+  const steps = workflow?.steps ?? []
+
+  if (!workflow || !Array.isArray(steps)) {
+    throw new Error('找不到 workflows 裡面的 steps，請貼上 ai-mc workflow.yaml 或 JSON。')
+  }
+
+  const importedNodes = [
+    initialNodes[0],
+    ...steps.map((step, index) => aiMcStepToNode(step, index)),
+  ]
+  const importedEdges = steps.map((step, index) => {
+    const source = index === 0 ? 'start-1' : sanitizeStepId(steps[index - 1].id)
+    const target = sanitizeStepId(step.id)
+    const sourceNode = importedNodes.find((node) => node.id === source)
+    return makeWorkflowEdge(source, target, sourceNode?.data.kind)
+  })
+
+  return {
+    nodes: importedNodes,
+    edges: importedEdges,
+    stepCount: steps.length,
+    workflowName,
+  }
+}
+
+function parseWorkflowText(value: string): AiMcWorkflowSpec {
+  try {
+    return JSON.parse(value) as AiMcWorkflowSpec
+  } catch {
+    try {
+      return YAML.parse(value) as AiMcWorkflowSpec
+    } catch {
+      throw new Error('讀不懂這段內容：請貼上合法的 YAML 或 JSON。')
+    }
+  }
+}
+
+function aiMcStepToNode(step: AiMcWorkflowStep, index: number): WorkflowNode {
+  const kind = aiMcKindFromStep(step)
+  const template = nodeTemplates.find((item) => item.kind === kind) ?? nodeTemplates[1]
+  return {
+    id: sanitizeStepId(step.id),
+    type: 'workflowNode',
+    position: {
+      x: 420 + (index % 2) * 280,
+      y: 120 + index * 150,
+    },
+    data: {
+      kind,
+      title: step.title || template.title,
+      description: step.description || step.when || template.description,
+      input: normalizeInput(step.input),
+      output: step.output || step.id,
+    },
+  }
+}
+
+function aiMcKindFromStep(step: AiMcWorkflowStep): WorkflowNodeKind {
+  if (step.blocks_downstream) return 'human_check'
+  if (step.type === 'file') return 'output'
+  if (step.when) return 'condition'
+  return 'ai_task'
+}
+
+function makeWorkflowEdge(source: string, target: string, sourceKind?: WorkflowNodeKind): WorkflowEdge {
+  return {
+    ...edgeOptionsForConnection(sourceKind, 'right'),
+    id: `${source}:right->${target}:left`,
+    source,
+    sourceHandle: 'right',
+    target,
+    targetHandle: 'left',
+  }
+}
+
+function edgeOptionsForConnection(sourceKind?: WorkflowNodeKind, sourceHandle?: string | null): Partial<WorkflowEdge> {
+  if (sourceKind !== 'condition') return defaultEdgeOptions
+
+  const label = sourceHandle === 'bottom' ? '否' : '是'
+  return {
+    ...defaultEdgeOptions,
+    label,
+    labelStyle: {
+      fill: '#07111f',
+      fontSize: 12,
+      fontWeight: 900,
+    },
+    labelBgStyle: {
+      fill: '#ffd166',
+      fillOpacity: 1,
+    },
+    labelBgPadding: [8, 4],
+    labelBgBorderRadius: 999,
+  }
+}
+
+function aiMcStepType(kind: WorkflowNodeKind): string {
+  if (kind === 'human_check') return 'code-edit'
+  if (kind === 'output') return 'file'
+  return 'ai'
+}
+
+function orderWorkflowNodes(nodes: WorkflowNode[], edges: WorkflowEdge[]): WorkflowNode[] {
+  const byId = new Map(nodes.map((node) => [node.id, node]))
+  const outgoing = new Map<string, string[]>()
+  const incoming = new Set<string>()
+  const visited = new Set<string>()
+  const ordered: WorkflowNode[] = []
+
+  for (const edge of edges) {
+    if (!edge.source || !edge.target) continue
+    outgoing.set(edge.source, [...(outgoing.get(edge.source) ?? []), edge.target])
+    incoming.add(edge.target)
+  }
+  for (const [source, targets] of outgoing) {
+    outgoing.set(source, sortNodeIdsByPosition(targets, byId))
+  }
+
+  function visit(nodeId: string) {
+    const node = byId.get(nodeId)
+    if (!node || visited.has(nodeId)) return
+    visited.add(nodeId)
+    ordered.push(node)
+    for (const targetId of outgoing.get(nodeId) ?? []) visit(targetId)
+  }
+
+  const starts = nodes.filter((node) => node.data.kind === 'start')
+  for (const node of sortNodesByPosition(starts)) visit(node.id)
+
+  const rootNodes = nodes.filter((node) => !incoming.has(node.id) && node.data.kind !== 'start')
+  for (const node of sortNodesByPosition(rootNodes)) visit(node.id)
+
+  for (const node of sortNodesByPosition(nodes)) visit(node.id)
+  return ordered
+}
+
+function sortNodeIdsByPosition(ids: string[], nodes: Map<string, WorkflowNode>): string[] {
+  return [...ids].sort((left, right) => {
+    const leftNode = nodes.get(left)
+    const rightNode = nodes.get(right)
+    return (leftNode?.position.y ?? 0) - (rightNode?.position.y ?? 0)
+      || (leftNode?.position.x ?? 0) - (rightNode?.position.x ?? 0)
+  })
+}
+
+function sortNodesByPosition(nodes: WorkflowNode[]): WorkflowNode[] {
+  return [...nodes].sort((left, right) => (
+    left.position.y - right.position.y || left.position.x - right.position.x
+  ))
+}
+
+function parseInputList(value: string): string | string[] {
+  const parts = value.split(',').map((item) => item.trim()).filter(Boolean)
+  return parts.length > 1 ? parts : value.trim()
+}
+
+function normalizeInput(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) return value.join(', ')
+  return value ?? ''
+}
+
+function sanitizeStepId(value: string): string {
+  const safe = value.trim().replace(/[^A-Za-z0-9_-]/g, '_').replace(/_+/g, '_')
+  return safe || 'step'
+}

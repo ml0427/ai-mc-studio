@@ -294,6 +294,10 @@ const initialNodes: WorkflowNode[] = [
 
 const initialEdges: WorkflowEdge[] = []
 const nodeTypes = { workflowNode: WorkflowNodeCard }
+const defaultConditionBranchHandles: BranchHandle[] = [
+  { id: 'yes', label: '是' },
+  { id: 'no', label: '否' },
+]
 const defaultEdgeOptions = {
   animated: true,
   reconnectable: true,
@@ -383,17 +387,37 @@ function WorkflowEditor() {
     const sourceNode = nodes.find((node) => node.id === connection.source)
     setEdges((currentEdges) => addEdge({
       ...connection,
-      ...edgeOptionsForConnection(sourceNode?.data.kind, connection.sourceHandle),
+      ...edgeOptionsForConnection(
+        sourceNode?.data.kind,
+        connection.sourceHandle,
+        undefined,
+        sourceNode?.data.branchHandles,
+      ),
       id: `${connection.source}:${connection.sourceHandle}->${connection.target}:${connection.targetHandle}`,
     }, currentEdges))
   }, [nodes, setEdges])
 
   const onReconnect = useCallback<OnReconnect<WorkflowEdge>>((oldEdge, newConnection) => {
     const sourceNode = nodes.find((node) => node.id === newConnection.source)
+    const preservedLabel = oldEdge.source === newConnection.source && oldEdge.sourceHandle === newConnection.sourceHandle
+      ? edgeLabel(oldEdge)
+      : undefined
+    const nextEdgeOptions = edgeOptionsForConnection(
+      sourceNode?.data.kind,
+      newConnection.sourceHandle,
+      preservedLabel,
+      sourceNode?.data.branchHandles,
+    )
     const nextEdge = {
       ...oldEdge,
+      label: undefined,
+      labelStyle: undefined,
+      labelBgStyle: undefined,
+      labelBgPadding: undefined,
+      labelBgBorderRadius: undefined,
+      data: undefined,
       ...newConnection,
-      ...edgeOptionsForConnection(sourceNode?.data.kind, newConnection.sourceHandle, edgeLabel(oldEdge)),
+      ...nextEdgeOptions,
       id: `${newConnection.source}:${newConnection.sourceHandle}->${newConnection.target}:${newConnection.targetHandle}`,
     }
     setEdges((currentEdges) => reconnectEdge(oldEdge, nextEdge, currentEdges))
@@ -758,10 +782,7 @@ function WorkflowNodeCard({ data, selected }: NodeProps<WorkflowNode>) {
   if (data.kind === 'condition') {
     const branchHandles = data.branchHandles?.length
       ? data.branchHandles
-      : [
-        { id: 'yes', label: '是' },
-        { id: 'no', label: '否' },
-      ]
+      : defaultConditionBranchHandles
 
     return (
       <article className={`workflow-node type-${data.kind} split-branch ${selected ? 'selected' : ''}`}>
@@ -1125,14 +1146,14 @@ function makeBranchHandlesByNode(graphNodes: AiMcGraphNode[], graphEdges: AiMcGr
   const handlesByNode = new Map<string, BranchHandle[]>()
   const conditionIds = new Set(
     graphNodes
-      .filter((node) => graphKindFromType(node.type) === 'condition')
+      .filter((node) => graphKindFromType(node.kind ?? node.type) === 'condition')
       .map((node) => node.id),
   )
 
   for (const node of graphNodes) {
     if (node.handles?.length) {
       handlesByNode.set(node.id, dedupeBranchHandles(node.handles.map((handle) => ({
-        id: sanitizeHandleId(handle.id),
+        id: canonicalConditionHandleId(handle.id),
         label: localizeWorkflowText(handle.label || handle.id),
       }))))
     }
@@ -1153,9 +1174,10 @@ function makeBranchHandlesByNode(graphNodes: AiMcGraphNode[], graphEdges: AiMcGr
 
 function branchHandleFromEdge(edge: AiMcGraphEdge): BranchHandle {
   const rawId = edge.sourceHandle ?? edge.handle ?? edge.branch ?? edge.branch_label ?? edge.label ?? 'branch'
-  const label = edge.branch_label || edge.label || localizedBranchLabel(edge.branch) || rawId
+  const id = canonicalConditionHandleId(rawId)
+  const label = edge.branch_label || edge.label || localizedBranchLabel(edge.branch) || branchLabelForHandle(id) || rawId
   return {
-    id: sanitizeHandleId(rawId),
+    id,
     label: localizeWorkflowText(label),
   }
 }
@@ -1171,6 +1193,13 @@ function dedupeBranchHandles(handles: BranchHandle[]) {
 
 function sanitizeHandleId(value: string) {
   return sanitizeStepId(value || 'branch')
+}
+
+function canonicalConditionHandleId(value: string | undefined | null) {
+  const normalized = String(value ?? '').trim().toLowerCase()
+  if (normalized === 'yes' || normalized === '是') return 'yes'
+  if (normalized === 'no' || normalized === '否') return 'no'
+  return sanitizeHandleId(String(value ?? 'branch'))
 }
 
 function graphEdgeToWorkflowEdge(
@@ -1190,15 +1219,14 @@ function graphEdgeToWorkflowEdge(
 
   const sourceKind = kindById.get(source)
   const sourceBranchHandles = branchHandlesByNode.get(originalSource) ?? []
-  const sourceHandle = graphEdge.sourceHandle
-    ?? graphEdge.handle
-    ?? sourceHandleForGraphEdge(graphEdge, sourceKind, sourceBranchHandles)
+  const sourceHandle = sourceHandleForGraphEdge(graphEdge, sourceKind)
   const label = graphEdge.branch_label || graphEdge.label || localizedBranchLabel(graphEdge.branch)
 
   return makeWorkflowEdge(source, target, sourceKind, {
     id: `graph-${index}-${source}:${sourceHandle}->${target}:top`,
     sourceHandle,
     label: label ? localizeWorkflowText(label) : undefined,
+    sourceBranchHandles,
     targetHandle: graphEdge.targetHandle ?? 'top',
   })
 }
@@ -1206,12 +1234,21 @@ function graphEdgeToWorkflowEdge(
 function sourceHandleForGraphEdge(
   edge: AiMcGraphEdge,
   sourceKind?: WorkflowNodeKind,
-  branchHandles: BranchHandle[] = [],
 ) {
   if (sourceKind !== 'condition') return 'bottom'
+  const explicitHandle = edge.sourceHandle ?? edge.handle
+  if (explicitHandle) return canonicalConditionHandleId(explicitHandle)
   const handle = branchHandleFromEdge(edge)
-  if (branchHandles.some((item) => item.id === handle.id)) return handle.id
   return handle.id
+}
+
+function branchLabelForHandle(sourceHandle?: string | null, branchHandles: BranchHandle[] = []) {
+  if (!sourceHandle) return undefined
+  const customLabel = branchHandles.find((handle) => handle.id === sourceHandle)?.label
+  if (customLabel) return customLabel
+  if (sourceHandle === 'yes') return '是'
+  if (sourceHandle === 'no') return '否'
+  return undefined
 }
 
 function localizedBranchLabel(branch: string | undefined) {
@@ -1440,13 +1477,14 @@ function makeWorkflowEdge(
     targetHandle?: string
     label?: string
     showLabel?: boolean
+    sourceBranchHandles?: BranchHandle[]
   } = {},
 ): WorkflowEdge {
-  const sourceHandle = options.sourceHandle ?? (sourceKind === 'condition' ? 'right' : 'bottom')
+  const sourceHandle = options.sourceHandle ?? (sourceKind === 'condition' ? 'yes' : 'bottom')
   const targetHandle = options.targetHandle ?? 'top'
   const displayLabel = options.showLabel === false ? undefined : options.label
   return {
-    ...edgeOptionsForConnection(sourceKind, sourceHandle, displayLabel),
+    ...edgeOptionsForConnection(sourceKind, sourceHandle, displayLabel, options.sourceBranchHandles),
     id: options.id ?? `${source}:${sourceHandle}->${target}:${targetHandle}`,
     source,
     sourceHandle,
@@ -1460,8 +1498,9 @@ function edgeOptionsForConnection(
   sourceKind?: WorkflowNodeKind,
   sourceHandle?: string | null,
   explicitLabel?: string,
+  branchHandles: BranchHandle[] = [],
 ): Partial<WorkflowEdge> {
-  const label = explicitLabel ?? (sourceKind === 'condition' ? (sourceHandle === 'left' ? '否' : '是') : undefined)
+  const label = explicitLabel ?? (sourceKind === 'condition' ? branchLabelForHandle(sourceHandle, branchHandles) : undefined)
   if (!label) return defaultEdgeOptions
   return {
     ...defaultEdgeOptions,

@@ -90,6 +90,7 @@ function WorkflowEditor() {
   const [selectedNodeId, setSelectedNodeId] = useState<string>('start-1')
   const [showJsonPreview, setShowJsonPreview] = useState(false)
   const [previewMode, setPreviewMode] = useState<PreviewMode>('aiMc')
+  const [previewActionMessage, setPreviewActionMessage] = useState('')
   const [showImportPanel, setShowImportPanel] = useState(false)
   const [importText, setImportText] = useState('')
   const [importMessage, setImportMessage] = useState('')
@@ -120,9 +121,89 @@ function WorkflowEditor() {
   }, null, 2), [edges, nodes])
   const aiMcPreview = useMemo(() => JSON.stringify(toAiMcWorkflowSpec(nodes, edges), null, 2), [edges, nodes])
   const graphPreview = useMemo(() => YAML.stringify(toGraphWorkflowSpec(nodes, edges)), [edges, nodes])
-  const activePreview = previewMode === 'aiMc'
-    ? aiMcPreview
-    : previewMode === 'graph' ? graphPreview : canvasPreview
+  const previewByMode = useCallback((mode: PreviewMode) => {
+    switch (mode) {
+      case 'aiMc':
+        return aiMcPreview
+      case 'graph':
+        return graphPreview
+      case 'canvas':
+        return canvasPreview
+    }
+  }, [aiMcPreview, canvasPreview, graphPreview])
+  const activePreview = previewByMode(previewMode)
+
+  function copyPreviewWithFallback(value: string) {
+    const textarea = document.createElement('textarea')
+    textarea.value = value
+    textarea.setAttribute('readonly', '')
+    textarea.style.position = 'fixed'
+    textarea.style.left = '-9999px'
+    document.body.appendChild(textarea)
+
+    try {
+      textarea.select()
+      return document.execCommand('copy')
+    } finally {
+      document.body.removeChild(textarea)
+    }
+  }
+
+  async function copyActivePreview() {
+    try {
+      if (navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(activePreview)
+          setPreviewActionMessage('已複製目前預覽。')
+          return
+        } catch {
+          // Some browsers expose Clipboard API but reject it outside secure contexts.
+        }
+      }
+
+      if (!copyPreviewWithFallback(activePreview)) {
+        throw new Error('Clipboard fallback failed')
+      }
+
+      setPreviewActionMessage('已複製目前預覽。')
+    } catch {
+      setPreviewActionMessage('複製失敗，請改用手動選取。')
+    }
+  }
+
+  function downloadPreview(mode: PreviewMode) {
+    const filenames: Record<PreviewMode, string> = {
+      aiMc: 'ai-mc-workflow.json',
+      graph: 'graph-workflow.yaml',
+      canvas: 'canvas-workflow.json',
+    }
+    const mimeTypes: Record<PreviewMode, string> = {
+      aiMc: 'application/json',
+      graph: 'application/x-yaml',
+      canvas: 'application/json',
+    }
+    const filename = filenames[mode]
+    let url = ''
+    let link: HTMLAnchorElement | null = null
+
+    try {
+      const blob = new Blob([previewByMode(mode)], { type: `${mimeTypes[mode]};charset=utf-8` })
+      url = URL.createObjectURL(blob)
+      link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      setPreviewActionMessage(`已下載 ${filename}。`)
+    } catch {
+      setPreviewActionMessage(`下載 ${filename} 失敗。`)
+    } finally {
+      link?.remove()
+      if (url) {
+        window.setTimeout(() => URL.revokeObjectURL(url), 0)
+      }
+    }
+  }
 
   const onConnect = useCallback((connection: Connection) => {
     const sourceNode = nodes.find((node) => node.id === connection.source)
@@ -477,42 +558,63 @@ function WorkflowEditor() {
             </strong>
             <span>{nodes.length} 個節點 / {edges.length} 條線</span>
           </div>
-          <div className="preview-mode-tabs" role="tablist" aria-label="預覽格式">
+          <div className="preview-controls">
+            <div className="preview-mode-tabs" role="tablist" aria-label="預覽格式">
+              <button
+                aria-selected={previewMode === 'aiMc'}
+                role="tab"
+                type="button"
+                onClick={() => setPreviewMode('aiMc')}
+              >
+                ai-mc 格式
+              </button>
+              <button
+                aria-selected={previewMode === 'graph'}
+                role="tab"
+                type="button"
+                onClick={() => setPreviewMode('graph')}
+              >
+                graph YAML
+              </button>
+              <button
+                aria-selected={previewMode === 'canvas'}
+                role="tab"
+                type="button"
+                onClick={() => setPreviewMode('canvas')}
+              >
+                畫布資料
+              </button>
+            </div>
+            <div className="preview-actions" aria-label="預覽操作">
+              <button type="button" onClick={() => void copyActivePreview()}>
+                複製目前預覽
+              </button>
+              <button type="button" onClick={() => downloadPreview('aiMc')}>
+                下載 ai-mc JSON
+              </button>
+              <button type="button" onClick={() => downloadPreview('graph')}>
+                下載 graph YAML
+              </button>
+              <button type="button" onClick={() => downloadPreview('canvas')}>
+                下載畫布 JSON
+              </button>
+            </div>
             <button
-              aria-selected={previewMode === 'aiMc'}
-              role="tab"
+              className="json-toggle"
+              aria-expanded={showJsonPreview}
               type="button"
-              onClick={() => setPreviewMode('aiMc')}
+              onClick={() => setShowJsonPreview((current) => !current)}
             >
-              ai-mc 格式
-            </button>
-            <button
-              aria-selected={previewMode === 'graph'}
-              role="tab"
-              type="button"
-              onClick={() => setPreviewMode('graph')}
-            >
-              graph YAML
-            </button>
-            <button
-              aria-selected={previewMode === 'canvas'}
-              role="tab"
-              type="button"
-              onClick={() => setPreviewMode('canvas')}
-            >
-              畫布資料
+              {showJsonPreview ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
+              {showJsonPreview ? '隱藏下方欄位' : '顯示下方欄位'}
             </button>
           </div>
-          <button
-            className="json-toggle"
-            aria-expanded={showJsonPreview}
-            type="button"
-            onClick={() => setShowJsonPreview((current) => !current)}
-          >
-            {showJsonPreview ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
-            {showJsonPreview ? '隱藏下方欄位' : '顯示下方欄位'}
-          </button>
         </div>
+        {previewActionMessage && (
+          <p className="preview-action-message" role="status">
+            {previewActionMessage}
+          </p>
+        )}
         {showJsonPreview && <pre>{activePreview}</pre>}
       </section>
     </main>

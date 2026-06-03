@@ -91,7 +91,7 @@ button {
 }
 
 .app-shell.json-hidden {
-  grid-template-rows: minmax(0, 1fr) 52px;
+  grid-template-rows: minmax(0, 1fr) minmax(52px, auto);
 }
 
 .toolbox-panel,
@@ -447,7 +447,7 @@ button {
 .json-panel {
   grid-area: json;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   overflow: hidden;
 }
 
@@ -455,6 +455,7 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 10px;
   border-bottom: 1px solid var(--app-border);
   padding: 10px 12px;
@@ -481,6 +482,15 @@ button {
   font-size: 12px;
 }
 
+.preview-controls {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .preview-mode-tabs {
   display: inline-flex;
   align-items: center;
@@ -491,7 +501,15 @@ button {
   padding: 3px;
 }
 
+.preview-actions {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
 .preview-mode-tabs button,
+.preview-actions button,
 .json-toggle {
   min-height: 32px;
   display: inline-flex;
@@ -512,6 +530,11 @@ button {
   padding: 5px 9px;
 }
 
+.preview-actions button {
+  min-height: 28px;
+  padding: 5px 9px;
+}
+
 .preview-mode-tabs button[aria-selected="true"] {
   border-color: var(--app-accent);
   background: color-mix(in srgb, var(--app-accent) 16%, transparent);
@@ -520,10 +543,26 @@ button {
 
 .preview-mode-tabs button:hover,
 .preview-mode-tabs button:focus-visible,
+.preview-actions button:hover,
+.preview-actions button:focus-visible,
 .json-toggle:hover,
 .json-toggle:focus-visible {
   border-color: var(--app-accent);
   outline: 0;
+}
+
+.preview-action-message {
+  margin: 0;
+  border-bottom: 1px solid var(--app-border);
+  color: var(--app-muted);
+  font-size: 12px;
+  line-height: 1.35;
+  padding: 6px 12px;
+}
+
+.json-hidden .preview-action-message {
+  border-top: 1px solid var(--app-border);
+  border-bottom: 0;
 }
 
 .json-panel pre {
@@ -868,7 +907,7 @@ button {
   }
 
   .app-shell.json-hidden {
-    grid-template-rows: auto 640px auto 52px;
+    grid-template-rows: auto 640px auto minmax(52px, auto);
   }
 
   .toolbox-list {

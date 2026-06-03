@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import {
   addEdge,
   Background,
@@ -21,15 +21,22 @@ import {
   ChevronDown,
   ChevronUp,
   Circle,
+  Code2,
   FileInput,
+  FileText,
   GitBranch,
   Hand,
   Moon,
   PanelRight,
   Plus,
+  RotateCcw,
   Route,
   Square,
   Sun,
+  Terminal,
+  Trash2,
+  Upload,
+  Wrench,
 } from 'lucide-react'
 import YAML from 'yaml'
 
@@ -37,21 +44,33 @@ import { toAiMcWorkflowSpec, toGraphWorkflowSpec } from './workflow/convert'
 import { defaultEdgeOptions, edgeLabel, edgeOptionsForConnection } from './workflow/edges'
 import { localizeWorkflowTerm } from './workflow/localization'
 import { parseAiMcWorkflow, workflowNamesFromText } from './workflow/parse'
-import { defaultConditionBranchHandles, initialEdges, initialNodes, nodeColor, nodeTypeLabels } from './workflow/templates'
+import { createCanvasBackup, parseCanvasBackup, readCanvasStateFromStorage, writeCanvasStateToStorage } from './workflow/persistence'
+import { defaultConditionBranchHandles, initialEdges, initialNodes, nodeColor, nodeTemplateMetadata, nodeTypeLabels, toolboxGroups } from './workflow/templates'
+import type { PersistedCanvasState } from './workflow/persistence'
 import type { EditableField, PreviewMode, ThemeMode, WorkflowEdge, WorkflowNode, WorkflowNodeKind } from './workflow/types'
+
+const nodeTemplateIcons: Record<WorkflowNodeKind, typeof Circle> = {
+  start: Circle,
+  ai_task: Bot,
+  condition: GitBranch,
+  human_check: Hand,
+  output: Square,
+  shell: Terminal,
+  tool: Wrench,
+  file: FileText,
+  code_edit: Code2,
+  terminal: Terminal,
+}
 
 const nodeTemplates: Array<{
   kind: WorkflowNodeKind
   title: string
   description: string
   icon: typeof Circle
-}> = [
-  { kind: 'start', title: '起點', description: '流程從這裡開始。', icon: Circle },
-  { kind: 'ai_task', title: 'AI 任務', description: '請 AI 做一件事，例如整理、判斷或產生內容。', icon: Bot },
-  { kind: 'condition', title: '條件分支', description: '根據條件決定下一步要走哪條路。', icon: GitBranch },
-  { kind: 'human_check', title: '人工確認', description: '暫停一下，讓人確認後再繼續。', icon: Hand },
-  { kind: 'output', title: '輸出結果', description: '整理最後要留下或交付的內容。', icon: Square },
-]
+}> = nodeTemplateMetadata.map((template) => ({
+  ...template,
+  icon: nodeTemplateIcons[template.kind],
+}))
 
 const nodeTypes = { workflowNode: WorkflowNodeCard }
 
@@ -76,6 +95,34 @@ workflows:
         output: report
 `
 
+const defaultCanvasState: PersistedCanvasState = {
+  nodes: initialNodes,
+  edges: initialEdges,
+  selectedWorkflowName: '',
+  previewMode: 'aiMc',
+  themeMode: 'dark',
+}
+
+function readInitialCanvasState() {
+  if (typeof window === 'undefined') return defaultCanvasState
+  return readCanvasStateFromStorage(window.localStorage) ?? defaultCanvasState
+}
+
+function canvasContentSignature(nodes: WorkflowNode[], edges: WorkflowEdge[]) {
+  return JSON.stringify({
+    nodes: nodes.map(({ id, type, position, data }) => ({ id, type, position, data })),
+    edges: edges.map(({ id, source, sourceHandle, target, targetHandle, label, data }) => ({
+      id,
+      source,
+      sourceHandle,
+      target,
+      targetHandle,
+      label,
+      data,
+    })),
+  })
+}
+
 export function App() {
   return (
     <ReactFlowProvider>
@@ -85,18 +132,20 @@ export function App() {
 }
 
 function WorkflowEditor() {
-  const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode>(initialNodes)
-  const [edges, setEdges, onEdgesChange] = useEdgesState<WorkflowEdge>(initialEdges)
-  const [selectedNodeId, setSelectedNodeId] = useState<string>('start-1')
+  const initialCanvasState = useMemo(() => readInitialCanvasState(), [])
+  const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode>(initialCanvasState.nodes)
+  const [edges, setEdges, onEdgesChange] = useEdgesState<WorkflowEdge>(initialCanvasState.edges)
+  const [selectedNodeId, setSelectedNodeId] = useState<string>(initialCanvasState.nodes[0]?.id ?? '')
   const [showJsonPreview, setShowJsonPreview] = useState(false)
-  const [previewMode, setPreviewMode] = useState<PreviewMode>('aiMc')
+  const [previewMode, setPreviewMode] = useState<PreviewMode>(initialCanvasState.previewMode)
   const [previewActionMessage, setPreviewActionMessage] = useState('')
   const [showImportPanel, setShowImportPanel] = useState(false)
   const [importText, setImportText] = useState('')
   const [importMessage, setImportMessage] = useState('')
   const [importWorkflowNames, setImportWorkflowNames] = useState<string[]>([])
-  const [selectedImportWorkflow, setSelectedImportWorkflow] = useState('')
-  const [themeMode, setThemeMode] = useState<ThemeMode>('dark')
+  const [currentWorkflowName, setCurrentWorkflowName] = useState(initialCanvasState.selectedWorkflowName)
+  const [selectedImportWorkflow, setSelectedImportWorkflow] = useState(initialCanvasState.selectedWorkflowName)
+  const [themeMode, setThemeMode] = useState<ThemeMode>(initialCanvasState.themeMode)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const { fitView, screenToFlowPosition } = useReactFlow<WorkflowNode, WorkflowEdge>()
 
@@ -105,20 +154,13 @@ function WorkflowEditor() {
     [nodes, selectedNodeId],
   )
 
-  const canvasPreview = useMemo(() => JSON.stringify({
-    nodes: nodes.map(({ id, type, position, data }) => ({ id, type, position, data })),
-    edges: edges.map(({ id, source, sourceHandle, target, targetHandle, label, data, markerEnd, reconnectable }) => ({
-      id,
-      source,
-      sourceHandle,
-      target,
-      targetHandle,
-      label,
-      data,
-      markerEnd,
-      reconnectable,
-    })),
-  }, null, 2), [edges, nodes])
+  const canvasPreview = useMemo(() => createCanvasBackup({
+    nodes,
+    edges,
+    selectedWorkflowName: currentWorkflowName,
+    previewMode,
+    themeMode,
+  }), [currentWorkflowName, edges, nodes, previewMode, themeMode])
   const aiMcPreview = useMemo(() => JSON.stringify(toAiMcWorkflowSpec(nodes, edges), null, 2), [edges, nodes])
   const graphPreview = useMemo(() => YAML.stringify(toGraphWorkflowSpec(nodes, edges)), [edges, nodes])
   const previewByMode = useCallback((mode: PreviewMode) => {
@@ -132,6 +174,17 @@ function WorkflowEditor() {
     }
   }, [aiMcPreview, canvasPreview, graphPreview])
   const activePreview = previewByMode(previewMode)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    writeCanvasStateToStorage(window.localStorage, {
+      nodes,
+      edges,
+      selectedWorkflowName: currentWorkflowName,
+      previewMode,
+      themeMode,
+    })
+  }, [currentWorkflowName, edges, nodes, previewMode, themeMode])
 
   function copyPreviewWithFallback(value: string) {
     const textarea = document.createElement('textarea')
@@ -203,6 +256,71 @@ function WorkflowEditor() {
         window.setTimeout(() => URL.revokeObjectURL(url), 0)
       }
     }
+  }
+
+  function hasEditedCanvas() {
+    return canvasContentSignature(nodes, edges) !== canvasContentSignature(initialNodes, initialEdges)
+  }
+
+  function confirmCanvasOverwrite(action: string) {
+    if (!hasEditedCanvas()) return true
+    return window.confirm(`${action}會覆蓋目前畫布內容。要繼續嗎？`)
+  }
+
+  function fitCanvasAfterReplace() {
+    window.requestAnimationFrame(() => {
+      void fitView({ duration: 360, padding: 0.22 })
+    })
+  }
+
+  function applyCanvasState(nextState: PersistedCanvasState, message: string) {
+    if (!confirmCanvasOverwrite('匯入')) {
+      setImportMessage('已取消匯入。')
+      return
+    }
+
+    setNodes(nextState.nodes)
+    setEdges(nextState.edges)
+    setSelectedNodeId(nextState.nodes[0]?.id ?? '')
+    setPreviewMode(nextState.previewMode)
+    setThemeMode(nextState.themeMode)
+    setImportWorkflowNames([])
+    setCurrentWorkflowName(nextState.selectedWorkflowName)
+    setSelectedImportWorkflow(nextState.selectedWorkflowName)
+    setImportMessage(message)
+    fitCanvasAfterReplace()
+  }
+
+  function importCanvasBackup() {
+    const parsed = parseCanvasBackup(importText)
+    if (!parsed) {
+      setImportMessage('這不是可匯入的畫布備份 JSON。')
+      return
+    }
+
+    applyCanvasState(parsed, `已匯入畫布備份：${parsed.nodes.length} 個節點 / ${parsed.edges.length} 條線`)
+  }
+
+  function clearCanvas() {
+    if (!confirmCanvasOverwrite('清空')) return
+    setNodes([])
+    setEdges([])
+    setSelectedNodeId('')
+    setCurrentWorkflowName('')
+    setSelectedImportWorkflow('')
+    setPreviewActionMessage('已清空畫布。')
+  }
+
+  function restoreInitialCanvas() {
+    if (!confirmCanvasOverwrite('還原初始畫布')) return
+    setNodes(initialNodes)
+    setEdges(initialEdges)
+    setSelectedNodeId(initialNodes[0]?.id ?? '')
+    setCurrentWorkflowName('')
+    setSelectedImportWorkflow('')
+    setPreviewMode('aiMc')
+    setPreviewActionMessage('已還原初始畫布。')
+    fitCanvasAfterReplace()
   }
 
   const onConnect = useCallback((connection: Connection) => {
@@ -281,16 +399,19 @@ function WorkflowEditor() {
         ? workflowName
         : nextWorkflowNames[0] ?? ''
       const imported = parseAiMcWorkflow(value, nextWorkflowName)
+      if (!confirmCanvasOverwrite('匯入')) {
+        setImportMessage('已取消匯入。')
+        return
+      }
       setNodes(imported.nodes)
       setEdges(imported.edges)
       setSelectedNodeId(imported.nodes[0]?.id ?? '')
       setPreviewMode('aiMc')
       setImportWorkflowNames(nextWorkflowNames)
+      setCurrentWorkflowName(imported.workflowName)
       setSelectedImportWorkflow(imported.workflowName)
       setImportMessage(`已匯入 ${localizeWorkflowTerm(imported.workflowName)}：${imported.stepCount} 個步驟`)
-      window.requestAnimationFrame(() => {
-        void fitView({ duration: 360, padding: 0.22 })
-      })
+      fitCanvasAfterReplace()
     } catch (error) {
       setImportMessage(error instanceof Error ? error.message : '匯入失敗，請檢查格式。')
     }
@@ -307,10 +428,15 @@ function WorkflowEditor() {
     try {
       const content = await file.text()
       setImportText(content)
+      const canvasBackup = parseCanvasBackup(content)
+      if (canvasBackup) {
+        applyCanvasState(canvasBackup, `已匯入畫布備份：${canvasBackup.nodes.length} 個節點 / ${canvasBackup.edges.length} 條線`)
+        return
+      }
+
       const names = workflowNamesFromText(content)
       const firstWorkflow = names[0] ?? ''
       setImportWorkflowNames(names)
-      setSelectedImportWorkflow(firstWorkflow)
       applyImportedWorkflow(content, firstWorkflow)
     } catch {
       setImportMessage('讀取檔案失敗，請改用貼上文字。')
@@ -388,7 +514,6 @@ function WorkflowEditor() {
                   value={selectedImportWorkflow}
                   onChange={(event) => {
                     const nextWorkflow = event.target.value
-                    setSelectedImportWorkflow(nextWorkflow)
                     applyImportedWorkflow(importText, nextWorkflow)
                   }}
                 >
@@ -416,37 +541,58 @@ function WorkflowEditor() {
               <button type="button" onClick={importAiMcWorkflow} disabled={!importText.trim()}>
                 匯入
               </button>
+              <button type="button" onClick={importCanvasBackup} disabled={!importText.trim()}>
+                <Upload size={14} />
+                畫布備份
+              </button>
             </div>
             {importMessage && <p>{importMessage}</p>}
           </section>
         )}
 
         <div className="toolbox-list">
-          {nodeTemplates.map((template) => {
-            const Icon = template.icon
-            return (
-              <button
-                className={`toolbox-node type-${template.kind}`}
-                key={template.kind}
-                type="button"
-                onClick={() => addNode(template.kind)}
-              >
-                <Icon size={18} />
-                <span>
-                  <strong>{template.title}</strong>
-                  <small>{template.description}</small>
-                </span>
-                <Plus size={16} />
-              </button>
-            )
-          })}
+          {toolboxGroups.map((group) => (
+            <section className="toolbox-group" key={group.title} aria-label={`${group.title}節點`}>
+              <span>{group.title}</span>
+              {group.kinds.map((kind) => {
+                const template = nodeTemplates.find((item) => item.kind === kind) ?? nodeTemplates[1]
+                const Icon = template.icon
+                return (
+                  <button
+                    className={`toolbox-node type-${template.kind}`}
+                    key={template.kind}
+                    type="button"
+                    onClick={() => addNode(template.kind)}
+                  >
+                    <Icon size={18} />
+                    <span>
+                      <strong>{template.title}</strong>
+                      <small>{template.description}</small>
+                    </span>
+                    <Plus size={16} />
+                  </button>
+                )
+              })}
+            </section>
+          ))}
         </div>
       </aside>
 
       <section className="canvas-panel" aria-label="流程圖畫布">
-        <button className="fit-view-button" type="button" onClick={() => void fitView({ duration: 320, padding: 0.22 })}>
-          整理畫面
-        </button>
+        <div className="canvas-actions">
+          <button type="button" onClick={() => void fitView({ duration: 320, padding: 0.22 })}>
+            <Route size={15} />
+            整理畫面
+          </button>
+          <button type="button" onClick={restoreInitialCanvas}>
+            <RotateCcw size={15} />
+            還原初始
+          </button>
+          <button type="button" onClick={clearCanvas}>
+            <Trash2 size={15} />
+            清空
+          </button>
+        </div>
         <ReactFlow
           colorMode={themeMode}
           defaultEdgeOptions={defaultEdgeOptions}

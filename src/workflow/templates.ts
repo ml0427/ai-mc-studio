@@ -10,6 +10,25 @@ export const nodeTemplateMetadata: Array<{
   { kind: 'condition', title: '條件分支', description: '根據條件決定下一步要走哪條路。' },
   { kind: 'human_check', title: '人工確認', description: '暫停一下，讓人確認後再繼續。' },
   { kind: 'output', title: '輸出結果', description: '整理最後要留下或交付的內容。' },
+  { kind: 'shell', title: 'Shell 指令', description: '執行終端機指令或專案腳本。' },
+  { kind: 'tool', title: '工具呼叫', description: '使用外部工具、MCP 或 API 完成一步工作。' },
+  { kind: 'file', title: '檔案處理', description: '讀取、整理或產生檔案內容。' },
+  { kind: 'code_edit', title: '程式修改', description: '修改程式碼並保留可驗證的變更。' },
+  { kind: 'terminal', title: '終端結果', description: '標記流程結束或留下最後狀態。' },
+]
+
+export const toolboxGroups: Array<{
+  title: string
+  kinds: WorkflowNodeKind[]
+}> = [
+  {
+    title: '基本',
+    kinds: ['start', 'ai_task', 'condition', 'human_check', 'output'],
+  },
+  {
+    title: '執行',
+    kinds: ['shell', 'tool', 'file', 'code_edit', 'terminal'],
+  },
 ]
 
 export const nodeTypeLabels: Record<WorkflowNodeKind, string> = {

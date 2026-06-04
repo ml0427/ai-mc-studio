@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import {
   addEdge,
-  Background,
-  Controls,
-  MiniMap,
-  ReactFlow,
   ReactFlowProvider,
   reconnectEdge,
   useEdgesState,
@@ -16,29 +12,25 @@ import {
 import {
   FileInput,
   Moon,
-  RotateCcw,
   Route,
   Sun,
-  Trash2,
   Upload,
 } from 'lucide-react'
 import YAML from 'yaml'
 
+import { CanvasPanel } from './components/CanvasPanel'
 import { ConfirmationDialog } from './components/ConfirmationDialog'
 import { NodePalette } from './components/NodePalette'
 import { PreviewPanel } from './components/PreviewPanel'
 import { SettingsPanel } from './components/SettingsPanel'
-import { WorkflowNodeCard } from './components/WorkflowNodeCard'
 import { toAiMcWorkflowSpec, toGraphWorkflowSpec } from './workflow/convert'
-import { defaultEdgeOptions, edgeLabel, edgeOptionsForConnection } from './workflow/edges'
+import { edgeLabel, edgeOptionsForConnection } from './workflow/edges'
 import { localizeWorkflowTerm } from './workflow/localization'
 import { parseAiMcWorkflow, workflowNamesFromText } from './workflow/parse'
 import { createCanvasBackup, parseCanvasBackup, readCanvasStateFromStorage, writeCanvasStateToStorage } from './workflow/persistence'
-import { initialEdges, initialNodes, nodeColor, nodeTemplateMetadata } from './workflow/templates'
+import { initialEdges, initialNodes, nodeTemplateMetadata } from './workflow/templates'
 import type { PersistedCanvasState } from './workflow/persistence'
 import type { EditableField, PreviewMode, ThemeMode, WorkflowEdge, WorkflowNode, WorkflowNodeKind } from './workflow/types'
-
-const nodeTypes = { workflowNode: WorkflowNodeCard }
 
 const sampleImport = `schema_version: "1"
 name: sample-flow
@@ -547,47 +539,20 @@ function WorkflowEditor() {
         <NodePalette onAddNode={addNode} />
       </aside>
 
-      <section className="canvas-panel" aria-label="流程圖畫布">
-        <div className="canvas-actions">
-          <button type="button" onClick={() => void fitView({ duration: 320, padding: 0.22 })}>
-            <Route size={15} />
-            整理畫面
-          </button>
-          <button type="button" onClick={restoreInitialCanvas}>
-            <RotateCcw size={15} />
-            還原初始
-          </button>
-          <button type="button" onClick={clearCanvas}>
-            <Trash2 size={15} />
-            清空
-          </button>
-        </div>
-        <ReactFlow
-          colorMode={themeMode}
-          defaultEdgeOptions={defaultEdgeOptions}
-          edges={edges}
-          edgesReconnectable
-          fitView
-          nodes={nodes}
-          nodeTypes={nodeTypes}
-          reconnectRadius={10}
-          onConnect={onConnect}
-          onEdgesChange={onEdgesChange}
-          onNodesChange={onNodesChange}
-          onNodeClick={(_, node) => setSelectedNodeId(node.id)}
-          onPaneClick={() => setSelectedNodeId('')}
-          onReconnect={onReconnect}
-        >
-          <Background color={themeMode === 'dark' ? '#273248' : '#cbd5e1'} gap={28} />
-          <Controls position="top-right" />
-          <MiniMap
-            maskColor={themeMode === 'dark' ? 'rgba(7, 10, 18, 0.72)' : 'rgba(226, 232, 240, 0.58)'}
-            nodeColor={(node) => nodeColor((node as WorkflowNode).data.kind)}
-            pannable
-            zoomable
-          />
-        </ReactFlow>
-      </section>
+      <CanvasPanel
+        edges={edges}
+        nodes={nodes}
+        themeMode={themeMode}
+        onClearCanvas={clearCanvas}
+        onConnect={onConnect}
+        onEdgesChange={onEdgesChange}
+        onFitView={() => void fitView({ duration: 320, padding: 0.22 })}
+        onNodesChange={onNodesChange}
+        onNodeSelect={setSelectedNodeId}
+        onPaneClick={() => setSelectedNodeId('')}
+        onReconnect={onReconnect}
+        onRestoreInitialCanvas={restoreInitialCanvas}
+      />
 
       <SettingsPanel
         selectedNode={selectedNode}

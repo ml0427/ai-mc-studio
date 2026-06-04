@@ -103,6 +103,12 @@ const defaultCanvasState: PersistedCanvasState = {
   themeMode: 'dark',
 }
 
+type ConfirmationRequest = {
+  action: string
+  onConfirm: () => void
+  onCancel?: () => void
+}
+
 function readInitialCanvasState() {
   if (typeof window === 'undefined') return defaultCanvasState
   return readCanvasStateFromStorage(window.localStorage) ?? defaultCanvasState
@@ -146,6 +152,7 @@ function WorkflowEditor() {
   const [currentWorkflowName, setCurrentWorkflowName] = useState(initialCanvasState.selectedWorkflowName)
   const [selectedImportWorkflow, setSelectedImportWorkflow] = useState(initialCanvasState.selectedWorkflowName)
   const [themeMode, setThemeMode] = useState<ThemeMode>(initialCanvasState.themeMode)
+  const [confirmationRequest, setConfirmationRequest] = useState<ConfirmationRequest | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const { fitView, screenToFlowPosition } = useReactFlow<WorkflowNode, WorkflowEdge>()
 
@@ -262,9 +269,25 @@ function WorkflowEditor() {
     return canvasContentSignature(nodes, edges) !== canvasContentSignature(initialNodes, initialEdges)
   }
 
-  function confirmCanvasOverwrite(action: string) {
-    if (!hasEditedCanvas()) return true
-    return window.confirm(`${action}會覆蓋目前畫布內容。要繼續嗎？`)
+  function requestCanvasOverwrite(action: string, onConfirm: () => void, onCancel?: () => void) {
+    if (!hasEditedCanvas()) {
+      onConfirm()
+      return
+    }
+
+    setConfirmationRequest({ action, onConfirm, onCancel })
+  }
+
+  function cancelConfirmation() {
+    const request = confirmationRequest
+    setConfirmationRequest(null)
+    request?.onCancel?.()
+  }
+
+  function confirmPendingAction() {
+    const request = confirmationRequest
+    setConfirmationRequest(null)
+    request?.onConfirm()
   }
 
   function fitCanvasAfterReplace() {
@@ -274,21 +297,22 @@ function WorkflowEditor() {
   }
 
   function applyCanvasState(nextState: PersistedCanvasState, message: string) {
-    if (!confirmCanvasOverwrite('匯入')) {
-      setImportMessage('已取消匯入。')
-      return
-    }
-
-    setNodes(nextState.nodes)
-    setEdges(nextState.edges)
-    setSelectedNodeId(nextState.nodes[0]?.id ?? '')
-    setPreviewMode(nextState.previewMode)
-    setThemeMode(nextState.themeMode)
-    setImportWorkflowNames([])
-    setCurrentWorkflowName(nextState.selectedWorkflowName)
-    setSelectedImportWorkflow(nextState.selectedWorkflowName)
-    setImportMessage(message)
-    fitCanvasAfterReplace()
+    requestCanvasOverwrite(
+      '匯入',
+      () => {
+        setNodes(nextState.nodes)
+        setEdges(nextState.edges)
+        setSelectedNodeId(nextState.nodes[0]?.id ?? '')
+        setPreviewMode(nextState.previewMode)
+        setThemeMode(nextState.themeMode)
+        setImportWorkflowNames([])
+        setCurrentWorkflowName(nextState.selectedWorkflowName)
+        setSelectedImportWorkflow(nextState.selectedWorkflowName)
+        setImportMessage(message)
+        fitCanvasAfterReplace()
+      },
+      () => setImportMessage('已取消匯入。'),
+    )
   }
 
   function importCanvasBackup() {
@@ -302,25 +326,27 @@ function WorkflowEditor() {
   }
 
   function clearCanvas() {
-    if (!confirmCanvasOverwrite('清空')) return
-    setNodes([])
-    setEdges([])
-    setSelectedNodeId('')
-    setCurrentWorkflowName('')
-    setSelectedImportWorkflow('')
-    setPreviewActionMessage('已清空畫布。')
+    requestCanvasOverwrite('清空', () => {
+      setNodes([])
+      setEdges([])
+      setSelectedNodeId('')
+      setCurrentWorkflowName('')
+      setSelectedImportWorkflow('')
+      setPreviewActionMessage('已清空畫布。')
+    })
   }
 
   function restoreInitialCanvas() {
-    if (!confirmCanvasOverwrite('還原初始畫布')) return
-    setNodes(initialNodes)
-    setEdges(initialEdges)
-    setSelectedNodeId(initialNodes[0]?.id ?? '')
-    setCurrentWorkflowName('')
-    setSelectedImportWorkflow('')
-    setPreviewMode('aiMc')
-    setPreviewActionMessage('已還原初始畫布。')
-    fitCanvasAfterReplace()
+    requestCanvasOverwrite('還原初始畫布', () => {
+      setNodes(initialNodes)
+      setEdges(initialEdges)
+      setSelectedNodeId(initialNodes[0]?.id ?? '')
+      setCurrentWorkflowName('')
+      setSelectedImportWorkflow('')
+      setPreviewMode('aiMc')
+      setPreviewActionMessage('已還原初始畫布。')
+      fitCanvasAfterReplace()
+    })
   }
 
   const onConnect = useCallback((connection: Connection) => {
@@ -399,19 +425,21 @@ function WorkflowEditor() {
         ? workflowName
         : nextWorkflowNames[0] ?? ''
       const imported = parseAiMcWorkflow(value, nextWorkflowName)
-      if (!confirmCanvasOverwrite('匯入')) {
-        setImportMessage('已取消匯入。')
-        return
-      }
-      setNodes(imported.nodes)
-      setEdges(imported.edges)
-      setSelectedNodeId(imported.nodes[0]?.id ?? '')
-      setPreviewMode('aiMc')
-      setImportWorkflowNames(nextWorkflowNames)
-      setCurrentWorkflowName(imported.workflowName)
-      setSelectedImportWorkflow(imported.workflowName)
-      setImportMessage(`已匯入 ${localizeWorkflowTerm(imported.workflowName)}：${imported.stepCount} 個步驟`)
-      fitCanvasAfterReplace()
+      requestCanvasOverwrite(
+        '匯入',
+        () => {
+          setNodes(imported.nodes)
+          setEdges(imported.edges)
+          setSelectedNodeId(imported.nodes[0]?.id ?? '')
+          setPreviewMode('aiMc')
+          setImportWorkflowNames(nextWorkflowNames)
+          setCurrentWorkflowName(imported.workflowName)
+          setSelectedImportWorkflow(imported.workflowName)
+          setImportMessage(`已匯入 ${localizeWorkflowTerm(imported.workflowName)}：${imported.stepCount} 個步驟`)
+          fitCanvasAfterReplace()
+        },
+        () => setImportMessage('已取消匯入。'),
+      )
     } catch (error) {
       setImportMessage(error instanceof Error ? error.message : '匯入失敗，請檢查格式。')
     }
@@ -763,6 +791,28 @@ function WorkflowEditor() {
         )}
         {showJsonPreview && <pre>{activePreview}</pre>}
       </section>
+
+      {confirmationRequest && (
+        <div className="confirm-backdrop" role="presentation">
+          <section
+            aria-labelledby="confirm-title"
+            aria-modal="true"
+            className="confirm-dialog"
+            role="dialog"
+          >
+            <strong id="confirm-title">確認覆蓋畫布？</strong>
+            <p>{confirmationRequest.action}會覆蓋目前畫布內容。要繼續嗎？</p>
+            <div className="confirm-actions">
+              <button type="button" onClick={cancelConfirmation}>
+                取消
+              </button>
+              <button className="danger" type="button" onClick={confirmPendingAction}>
+                覆蓋並繼續
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   )
 }

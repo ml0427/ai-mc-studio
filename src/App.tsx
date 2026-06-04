@@ -18,33 +18,13 @@ import { SettingsPanel } from './components/SettingsPanel'
 import { ToolboxPanel } from './components/ToolboxPanel'
 import { toAiMcWorkflowSpec, toGraphWorkflowSpec } from './workflow/convert'
 import { edgeLabel, edgeOptionsForConnection } from './workflow/edges'
+import { sampleImport } from './workflow/examples'
 import { localizeWorkflowTerm } from './workflow/localization'
 import { parseAiMcWorkflow, workflowNamesFromText } from './workflow/parse'
 import { createCanvasBackup, parseCanvasBackup, readCanvasStateFromStorage, writeCanvasStateToStorage } from './workflow/persistence'
 import { initialEdges, initialNodes, nodeTemplateMetadata } from './workflow/templates'
 import type { PersistedCanvasState } from './workflow/persistence'
 import type { EditableField, PreviewMode, ThemeMode, WorkflowEdge, WorkflowNode, WorkflowNodeKind } from './workflow/types'
-
-const sampleImport = `schema_version: "1"
-name: sample-flow
-description: 匯入測試
-workflows:
-  main:
-    description: 主要流程
-    steps:
-      - id: collect_context
-        type: ai
-        output: context
-      - id: decide_path
-        type: ai
-        when: context needs review
-        input: context
-        output: decision
-      - id: final_output
-        type: file
-        input: decision
-        output: report
-`
 
 const defaultCanvasState: PersistedCanvasState = {
   nodes: initialNodes,

@@ -9,20 +9,13 @@ import {
   type Connection,
   type OnReconnect,
 } from '@xyflow/react'
-import {
-  FileInput,
-  Moon,
-  Route,
-  Sun,
-  Upload,
-} from 'lucide-react'
 import YAML from 'yaml'
 
 import { CanvasPanel } from './components/CanvasPanel'
 import { ConfirmationDialog } from './components/ConfirmationDialog'
-import { NodePalette } from './components/NodePalette'
 import { PreviewPanel } from './components/PreviewPanel'
 import { SettingsPanel } from './components/SettingsPanel'
+import { ToolboxPanel } from './components/ToolboxPanel'
 import { toAiMcWorkflowSpec, toGraphWorkflowSpec } from './workflow/convert'
 import { edgeLabel, edgeOptionsForConnection } from './workflow/edges'
 import { localizeWorkflowTerm } from './workflow/localization'
@@ -431,6 +424,24 @@ function WorkflowEditor() {
     }
   }
 
+  function loadSampleImport() {
+    setImportText(sampleImport)
+    const names = workflowNamesFromText(sampleImport)
+    setImportWorkflowNames(names)
+    setSelectedImportWorkflow(names[0] ?? '')
+    setImportMessage('')
+  }
+
+  function updateImportText(nextValue: string) {
+    setImportText(nextValue)
+    const names = workflowNamesFromText(nextValue)
+    setImportWorkflowNames(names)
+    setSelectedImportWorkflow((current) => (
+      current && names.includes(current) ? current : names[0] ?? ''
+    ))
+    setImportMessage('')
+  }
+
   function updateSelectedNode(field: EditableField, value: string) {
     if (!selectedNode) return
     setNodes((currentNodes) => currentNodes.map((node) => (
@@ -442,102 +453,24 @@ function WorkflowEditor() {
 
   return (
     <main className={`app-shell theme-${themeMode} ${showJsonPreview ? '' : 'json-hidden'}`}>
-      <aside className="toolbox-panel" aria-label="節點工具箱">
-        <div className="brand-block">
-          <Route size={24} />
-          <div>
-            <span>AI 流程圖</span>
-            <strong>拖拉式編輯器</strong>
-          </div>
-        </div>
-
-        <button
-          className="theme-toggle"
-          type="button"
-          onClick={() => setThemeMode((current) => (current === 'dark' ? 'light' : 'dark'))}
-        >
-          {themeMode === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-          {themeMode === 'dark' ? '亮色' : '暗色'}
-        </button>
-
-        <button
-          className="import-toggle"
-          type="button"
-          onClick={() => setShowImportPanel((current) => !current)}
-        >
-          <FileInput size={16} />
-          匯入 ai-mc
-        </button>
-
-        {showImportPanel && (
-          <section className="import-panel" aria-label="匯入 ai-mc workflow">
-            <input
-              ref={fileInputRef}
-              className="file-input"
-              type="file"
-              accept=".yaml,.yml,.json,application/json,text/yaml,text/x-yaml"
-              onChange={(event) => void loadImportFile(event)}
-            />
-            <textarea
-              value={importText}
-              onChange={(event) => {
-                const nextValue = event.target.value
-                setImportText(nextValue)
-                const names = workflowNamesFromText(nextValue)
-                setImportWorkflowNames(names)
-                setSelectedImportWorkflow((current) => (
-                  current && names.includes(current) ? current : names[0] ?? ''
-                ))
-                setImportMessage('')
-              }}
-              placeholder="貼上 workflow.yaml 或 JSON"
-              spellCheck={false}
-            />
-            {importWorkflowNames.length > 1 && (
-              <label className="workflow-picker">
-                <span>路線</span>
-                <select
-                  value={selectedImportWorkflow}
-                  onChange={(event) => {
-                    const nextWorkflow = event.target.value
-                    applyImportedWorkflow(importText, nextWorkflow)
-                  }}
-                >
-                  {importWorkflowNames.map((name) => (
-                    <option key={name} value={name}>{localizeWorkflowTerm(name)}</option>
-                  ))}
-                </select>
-              </label>
-            )}
-            <div className="import-actions">
-              <button type="button" onClick={() => fileInputRef.current?.click()}>
-                選檔案
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setImportText(sampleImport)
-                  const names = workflowNamesFromText(sampleImport)
-                  setImportWorkflowNames(names)
-                  setSelectedImportWorkflow(names[0] ?? '')
-                }}
-              >
-                放範例
-              </button>
-              <button type="button" onClick={importAiMcWorkflow} disabled={!importText.trim()}>
-                匯入
-              </button>
-              <button type="button" onClick={importCanvasBackup} disabled={!importText.trim()}>
-                <Upload size={14} />
-                畫布備份
-              </button>
-            </div>
-            {importMessage && <p>{importMessage}</p>}
-          </section>
-        )}
-
-        <NodePalette onAddNode={addNode} />
-      </aside>
+      <ToolboxPanel
+        fileInputRef={fileInputRef}
+        importMessage={importMessage}
+        importText={importText}
+        importWorkflowNames={importWorkflowNames}
+        selectedImportWorkflow={selectedImportWorkflow}
+        showImportPanel={showImportPanel}
+        themeMode={themeMode}
+        onAddNode={addNode}
+        onImportAiMcWorkflow={importAiMcWorkflow}
+        onImportCanvasBackup={importCanvasBackup}
+        onImportFileChange={(event) => void loadImportFile(event)}
+        onImportTextChange={updateImportText}
+        onSelectImportWorkflow={(nextWorkflow) => applyImportedWorkflow(importText, nextWorkflow)}
+        onToggleImportPanel={() => setShowImportPanel((current) => !current)}
+        onToggleTheme={() => setThemeMode((current) => (current === 'dark' ? 'light' : 'dark'))}
+        onUseSampleImport={loadSampleImport}
+      />
 
       <CanvasPanel
         edges={edges}

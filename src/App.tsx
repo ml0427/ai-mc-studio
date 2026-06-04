@@ -37,6 +37,7 @@ import {
 } from 'lucide-react'
 import YAML from 'yaml'
 
+import { ConfirmationDialog } from './components/ConfirmationDialog'
 import { WorkflowNodeCard } from './components/WorkflowNodeCard'
 import { toAiMcWorkflowSpec, toGraphWorkflowSpec } from './workflow/convert'
 import { defaultEdgeOptions, edgeLabel, edgeOptionsForConnection } from './workflow/edges'
@@ -791,25 +792,11 @@ function WorkflowEditor() {
       </section>
 
       {confirmationRequest && (
-        <div className="confirm-backdrop" role="presentation">
-          <section
-            aria-labelledby="confirm-title"
-            aria-modal="true"
-            className="confirm-dialog"
-            role="dialog"
-          >
-            <strong id="confirm-title">確認覆蓋畫布？</strong>
-            <p>{confirmationRequest.action}會覆蓋目前畫布內容。要繼續嗎？</p>
-            <div className="confirm-actions">
-              <button type="button" onClick={cancelConfirmation}>
-                取消
-              </button>
-              <button className="danger" type="button" onClick={confirmPendingAction}>
-                覆蓋並繼續
-              </button>
-            </div>
-          </section>
-        </div>
+        <ConfirmationDialog
+          action={confirmationRequest.action}
+          onCancel={cancelConfirmation}
+          onConfirm={confirmPendingAction}
+        />
       )}
     </main>
   )

@@ -14,27 +14,18 @@ import {
   type OnReconnect,
 } from '@xyflow/react'
 import {
-  Bot,
-  Circle,
-  Code2,
   FileInput,
-  FileText,
-  GitBranch,
-  Hand,
   Moon,
-  Plus,
   RotateCcw,
   Route,
-  Square,
   Sun,
-  Terminal,
   Trash2,
   Upload,
-  Wrench,
 } from 'lucide-react'
 import YAML from 'yaml'
 
 import { ConfirmationDialog } from './components/ConfirmationDialog'
+import { NodePalette } from './components/NodePalette'
 import { PreviewPanel } from './components/PreviewPanel'
 import { SettingsPanel } from './components/SettingsPanel'
 import { WorkflowNodeCard } from './components/WorkflowNodeCard'
@@ -43,32 +34,9 @@ import { defaultEdgeOptions, edgeLabel, edgeOptionsForConnection } from './workf
 import { localizeWorkflowTerm } from './workflow/localization'
 import { parseAiMcWorkflow, workflowNamesFromText } from './workflow/parse'
 import { createCanvasBackup, parseCanvasBackup, readCanvasStateFromStorage, writeCanvasStateToStorage } from './workflow/persistence'
-import { initialEdges, initialNodes, nodeColor, nodeTemplateMetadata, toolboxGroups } from './workflow/templates'
+import { initialEdges, initialNodes, nodeColor, nodeTemplateMetadata } from './workflow/templates'
 import type { PersistedCanvasState } from './workflow/persistence'
 import type { EditableField, PreviewMode, ThemeMode, WorkflowEdge, WorkflowNode, WorkflowNodeKind } from './workflow/types'
-
-const nodeTemplateIcons: Record<WorkflowNodeKind, typeof Circle> = {
-  start: Circle,
-  ai_task: Bot,
-  condition: GitBranch,
-  human_check: Hand,
-  output: Square,
-  shell: Terminal,
-  tool: Wrench,
-  file: FileText,
-  code_edit: Code2,
-  terminal: Terminal,
-}
-
-const nodeTemplates: Array<{
-  kind: WorkflowNodeKind
-  title: string
-  description: string
-  icon: typeof Circle
-}> = nodeTemplateMetadata.map((template) => ({
-  ...template,
-  icon: nodeTemplateIcons[template.kind],
-}))
 
 const nodeTypes = { workflowNode: WorkflowNodeCard }
 
@@ -388,7 +356,7 @@ function WorkflowEditor() {
   }, [nodes, setEdges])
 
   function addNode(kind: WorkflowNodeKind) {
-    const template = nodeTemplates.find((item) => item.kind === kind) ?? nodeTemplates[1]
+    const template = nodeTemplateMetadata.find((item) => item.kind === kind) ?? nodeTemplateMetadata[1]
     const nextNumber = nodes.filter((node) => node.data.kind === kind).length + 1
     const id = `${kind}-${nextNumber}`
     const position = screenToFlowPosition({
@@ -576,32 +544,7 @@ function WorkflowEditor() {
           </section>
         )}
 
-        <div className="toolbox-list">
-          {toolboxGroups.map((group) => (
-            <section className="toolbox-group" key={group.title} aria-label={`${group.title}節點`}>
-              <span>{group.title}</span>
-              {group.kinds.map((kind) => {
-                const template = nodeTemplates.find((item) => item.kind === kind) ?? nodeTemplates[1]
-                const Icon = template.icon
-                return (
-                  <button
-                    className={`toolbox-node type-${template.kind}`}
-                    key={template.kind}
-                    type="button"
-                    onClick={() => addNode(template.kind)}
-                  >
-                    <Icon size={18} />
-                    <span>
-                      <strong>{template.title}</strong>
-                      <small>{template.description}</small>
-                    </span>
-                    <Plus size={16} />
-                  </button>
-                )
-              })}
-            </section>
-          ))}
-        </div>
+        <NodePalette onAddNode={addNode} />
       </aside>
 
       <section className="canvas-panel" aria-label="流程圖畫布">

@@ -3,9 +3,7 @@ import {
   addEdge,
   Background,
   Controls,
-  Handle,
   MiniMap,
-  Position,
   ReactFlow,
   ReactFlowProvider,
   reconnectEdge,
@@ -13,7 +11,6 @@ import {
   useNodesState,
   useReactFlow,
   type Connection,
-  type NodeProps,
   type OnReconnect,
 } from '@xyflow/react'
 import {
@@ -40,12 +37,13 @@ import {
 } from 'lucide-react'
 import YAML from 'yaml'
 
+import { WorkflowNodeCard } from './components/WorkflowNodeCard'
 import { toAiMcWorkflowSpec, toGraphWorkflowSpec } from './workflow/convert'
 import { defaultEdgeOptions, edgeLabel, edgeOptionsForConnection } from './workflow/edges'
 import { localizeWorkflowTerm } from './workflow/localization'
 import { parseAiMcWorkflow, workflowNamesFromText } from './workflow/parse'
 import { createCanvasBackup, parseCanvasBackup, readCanvasStateFromStorage, writeCanvasStateToStorage } from './workflow/persistence'
-import { defaultConditionBranchHandles, initialEdges, initialNodes, nodeColor, nodeTemplateMetadata, nodeTypeLabels, toolboxGroups } from './workflow/templates'
+import { initialEdges, initialNodes, nodeColor, nodeTemplateMetadata, nodeTypeLabels, toolboxGroups } from './workflow/templates'
 import type { PersistedCanvasState } from './workflow/persistence'
 import type { EditableField, PreviewMode, ThemeMode, WorkflowEdge, WorkflowNode, WorkflowNodeKind } from './workflow/types'
 
@@ -815,51 +813,4 @@ function WorkflowEditor() {
       )}
     </main>
   )
-}
-
-function WorkflowNodeCard({ data, selected }: NodeProps<WorkflowNode>) {
-  if (data.kind === 'condition') {
-    const branchHandles = data.branchHandles?.length
-      ? data.branchHandles
-      : defaultConditionBranchHandles
-
-    return (
-      <article className={`workflow-node type-${data.kind} split-branch ${selected ? 'selected' : ''}`}>
-        <Handle id="top" type="target" position={Position.Top} />
-        <>
-          {branchHandles.map((handle, index) => (
-            <Handle
-              id={handle.id}
-              key={handle.id}
-              type="source"
-              position={Position.Bottom}
-              style={{ left: `${branchHandleLeft(index, branchHandles.length)}%` }}
-            />
-          ))}
-        </>
-        <div className="condition-node-content">
-          <span>{nodeTypeLabels[data.kind]}</span>
-          <strong>{data.title || '條件分支'}</strong>
-        </div>
-      </article>
-    )
-  }
-
-  return (
-    <article className={`workflow-node type-${data.kind} ${selected ? 'selected' : ''}`}>
-      <Handle id="top" type="target" position={Position.Top} />
-      <Handle id="bottom" type="source" position={Position.Bottom} />
-
-      <div className="node-header">
-        <span>{nodeTypeLabels[data.kind]}</span>
-        <strong>{data.title || '未命名'}</strong>
-      </div>
-    </article>
-  )
-}
-
-function branchHandleLeft(index: number, count: number) {
-  if (count <= 1) return 50
-  if (count === 2) return index === 0 ? 32 : 68
-  return ((index + 1) / (count + 1)) * 100
 }

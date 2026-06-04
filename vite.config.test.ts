@@ -13,4 +13,8 @@ describe('vite build configuration', () => {
     expect(manualChunks?.('D:/project/node_modules/lucide-react/dist/esm/icons/sun.js')).toBe('icons')
     expect(manualChunks?.('D:/project/node_modules/yaml/browser/index.js')).toBe('yaml')
   })
+
+  it('does not proxy API requests when the app has no backend service', () => {
+    expect(config.server?.proxy).toBeUndefined()
+  })
 })

@@ -559,6 +559,18 @@ function WorkflowEditor() {
 
   return (
     <main className={`app-shell theme-${themeMode} ${showJsonPreview ? '' : 'json-hidden'}`}>
+      <header className="studio-header">
+        <div>
+          <span>AI-MC Studio</span>
+          <strong>{currentWorkflowName ? localizeWorkflowTerm(currentWorkflowName) : 'Untitled workflow'}</strong>
+        </div>
+        <nav aria-label="工作區狀態">
+          <span>{nodes.length} nodes</span>
+          <span>{edges.length} edges</span>
+          <span>{previewMode === 'graph' ? 'graph YAML' : previewMode === 'canvas' ? 'canvas JSON' : 'ai-mc JSON'}</span>
+        </nav>
+      </header>
+
       <ToolboxPanel
         fileInputRef={fileInputRef}
         importMessage={importMessage}

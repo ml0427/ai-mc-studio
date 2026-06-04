@@ -1694,3 +1694,251 @@ button {
     clip: auto;
   }
 }
+
+
+/* Hermes structural canvas-first redesign */
+.app-shell {
+  position: relative;
+  isolation: isolate;
+  grid-template-columns: 72px minmax(0, 1fr);
+  grid-template-rows: 48px minmax(0, 1fr);
+  grid-template-areas:
+    "header header"
+    "toolbox canvas";
+  gap: 8px;
+  padding: 8px;
+  overflow: hidden;
+}
+
+.app-shell.json-hidden,
+.app-shell:not(.json-hidden) {
+  grid-template-rows: 48px minmax(0, 1fr);
+}
+
+.studio-header {
+  grid-area: header;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--app-panel) 96%, transparent);
+  color: var(--app-text);
+  padding: 8px 12px;
+  box-shadow: 0 1px 2px var(--app-shadow);
+}
+
+.studio-header div {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.studio-header div > span {
+  color: var(--app-muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.studio-header div > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  letter-spacing: -0.01em;
+}
+
+.studio-header nav {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--app-muted);
+  font-size: 11px;
+}
+
+.studio-header nav span {
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  background: var(--app-field);
+  padding: 4px 8px;
+}
+
+.toolbox-panel {
+  z-index: 16;
+  width: 72px;
+  min-width: 72px;
+  max-width: 280px;
+  padding: 8px;
+  overflow: hidden;
+  transition: width 0.18s ease, box-shadow 0.18s ease;
+}
+
+.toolbox-panel:hover,
+.toolbox-panel:focus-within {
+  width: 280px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
+}
+
+.toolbox-panel .brand-block {
+  grid-template-columns: 34px 190px;
+  border-bottom: 0;
+  padding-bottom: 2px;
+}
+
+.toolbox-panel .brand-block > div,
+.toolbox-panel .toolbox-top-actions,
+.toolbox-panel .palette-heading,
+.toolbox-panel .toolbox-list,
+.toolbox-panel .import-panel {
+  opacity: 0;
+  transform: translateX(-6px);
+  pointer-events: none;
+  transition: opacity 0.14s ease, transform 0.14s ease;
+}
+
+.toolbox-panel:hover .brand-block > div,
+.toolbox-panel:focus-within .brand-block > div,
+.toolbox-panel:hover .toolbox-top-actions,
+.toolbox-panel:focus-within .toolbox-top-actions,
+.toolbox-panel:hover .palette-heading,
+.toolbox-panel:focus-within .palette-heading,
+.toolbox-panel:hover .toolbox-list,
+.toolbox-panel:focus-within .toolbox-list,
+.toolbox-panel:hover .import-panel,
+.toolbox-panel:focus-within .import-panel {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+.toolbox-panel::after {
+  content: "+";
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  background: var(--app-field);
+  color: var(--app-text);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.toolbox-panel:hover::after,
+.toolbox-panel:focus-within::after {
+  display: none;
+}
+
+.canvas-panel {
+  grid-area: canvas;
+  z-index: 1;
+  border-radius: 14px;
+}
+
+.settings-panel {
+  position: absolute;
+  z-index: 14;
+  top: 64px;
+  right: 8px;
+  bottom: 72px;
+  width: min(340px, calc(100vw - 104px));
+  grid-area: unset;
+  background: color-mix(in srgb, var(--app-panel) 94%, transparent);
+  backdrop-filter: blur(10px);
+  transform: translateX(calc(100% - 44px));
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.settings-panel:hover,
+.settings-panel:focus-within {
+  transform: translateX(0);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
+}
+
+.settings-panel .panel-title {
+  min-height: 32px;
+  writing-mode: vertical-rl;
+  justify-content: center;
+  position: absolute;
+  left: 8px;
+  top: 10px;
+  color: var(--app-text);
+}
+
+.settings-panel .settings-form,
+.settings-panel .empty-settings {
+  margin-left: 36px;
+}
+
+.json-panel {
+  position: absolute;
+  z-index: 15;
+  left: 88px;
+  right: 8px;
+  bottom: 8px;
+  height: clamp(220px, 32vh, 360px);
+  grid-area: unset;
+  background: color-mix(in srgb, var(--app-panel) 96%, transparent);
+  backdrop-filter: blur(10px);
+  transition: height 0.18s ease, box-shadow 0.18s ease;
+}
+
+.json-hidden .json-panel {
+  height: 52px;
+  box-shadow: 0 1px 2px var(--app-shadow);
+}
+
+.json-hidden .json-panel .preview-action-message,
+.json-hidden .json-panel .preview-body {
+  display: none;
+}
+
+.json-title {
+  min-height: 52px;
+}
+
+.canvas-actions {
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.workflow-node {
+  background: color-mix(in srgb, var(--app-panel-solid) 94%, var(--node-color) 6%);
+}
+
+@media (max-width: 960px) {
+  .studio-header nav span:nth-child(3) {
+    display: none;
+  }
+
+  .settings-panel {
+    top: auto;
+    left: 88px;
+    right: 8px;
+    bottom: 72px;
+    width: auto;
+    height: 280px;
+    transform: translateY(calc(100% - 44px));
+  }
+
+  .settings-panel:hover,
+  .settings-panel:focus-within {
+    transform: translateY(0);
+  }
+
+  .settings-panel .panel-title {
+    writing-mode: horizontal-tb;
+  }
+
+  .json-panel {
+    left: 8px;
+  }
+}

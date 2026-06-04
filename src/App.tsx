@@ -15,8 +15,6 @@ import {
 } from '@xyflow/react'
 import {
   Bot,
-  ChevronDown,
-  ChevronUp,
   Circle,
   Code2,
   FileInput,
@@ -37,6 +35,7 @@ import {
 import YAML from 'yaml'
 
 import { ConfirmationDialog } from './components/ConfirmationDialog'
+import { PreviewPanel } from './components/PreviewPanel'
 import { SettingsPanel } from './components/SettingsPanel'
 import { WorkflowNodeCard } from './components/WorkflowNodeCard'
 import { toAiMcWorkflowSpec, toGraphWorkflowSpec } from './workflow/convert'
@@ -652,75 +651,18 @@ function WorkflowEditor() {
         onUpdateSelectedNode={updateSelectedNode}
       />
 
-      <section className="json-panel" aria-label="目前流程資料">
-        <div className="json-title">
-          <div>
-            <strong>
-              {previewMode === 'aiMc'
-                ? 'ai-mc workflow 預覽'
-                : previewMode === 'graph' ? 'graph YAML 預覽' : '畫布資料'}
-            </strong>
-            <span>{nodes.length} 個節點 / {edges.length} 條線</span>
-          </div>
-          <div className="preview-controls">
-            <div className="preview-mode-tabs" role="tablist" aria-label="預覽格式">
-              <button
-                aria-selected={previewMode === 'aiMc'}
-                role="tab"
-                type="button"
-                onClick={() => setPreviewMode('aiMc')}
-              >
-                ai-mc 格式
-              </button>
-              <button
-                aria-selected={previewMode === 'graph'}
-                role="tab"
-                type="button"
-                onClick={() => setPreviewMode('graph')}
-              >
-                graph YAML
-              </button>
-              <button
-                aria-selected={previewMode === 'canvas'}
-                role="tab"
-                type="button"
-                onClick={() => setPreviewMode('canvas')}
-              >
-                畫布資料
-              </button>
-            </div>
-            <div className="preview-actions" aria-label="預覽操作">
-              <button type="button" onClick={() => void copyActivePreview()}>
-                複製目前預覽
-              </button>
-              <button type="button" onClick={() => downloadPreview('aiMc')}>
-                下載 ai-mc JSON
-              </button>
-              <button type="button" onClick={() => downloadPreview('graph')}>
-                下載 graph YAML
-              </button>
-              <button type="button" onClick={() => downloadPreview('canvas')}>
-                下載畫布 JSON
-              </button>
-            </div>
-            <button
-              className="json-toggle"
-              aria-expanded={showJsonPreview}
-              type="button"
-              onClick={() => setShowJsonPreview((current) => !current)}
-            >
-              {showJsonPreview ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
-              {showJsonPreview ? '隱藏下方欄位' : '顯示下方欄位'}
-            </button>
-          </div>
-        </div>
-        {previewActionMessage && (
-          <p className="preview-action-message" role="status">
-            {previewActionMessage}
-          </p>
-        )}
-        {showJsonPreview && <pre>{activePreview}</pre>}
-      </section>
+      <PreviewPanel
+        activePreview={activePreview}
+        edgeCount={edges.length}
+        nodeCount={nodes.length}
+        previewActionMessage={previewActionMessage}
+        previewMode={previewMode}
+        showJsonPreview={showJsonPreview}
+        onCopyActivePreview={() => void copyActivePreview()}
+        onDownloadPreview={downloadPreview}
+        onPreviewModeChange={setPreviewMode}
+        onToggleJsonPreview={() => setShowJsonPreview((current) => !current)}
+      />
 
       {confirmationRequest && (
         <ConfirmationDialog

@@ -20,6 +20,7 @@ const nodeTypes: NodeTypes = { workflowNode: WorkflowNodeCard }
 
 type CanvasPanelProps = {
   canDelete: boolean
+  isEmpty: boolean
   canDuplicate: boolean
   canRedo: boolean
   canUndo: boolean
@@ -29,6 +30,7 @@ type CanvasPanelProps = {
   selectedNodeId: string
   themeMode: ThemeMode
   onAutoLayout: () => void
+  onAddAiTask: () => void
   onClearCanvas: () => void
   onConnect: OnConnect
   onDeleteSelected: () => void
@@ -47,6 +49,7 @@ type CanvasPanelProps = {
 
 export function CanvasPanel({
   canDelete,
+  isEmpty,
   canDuplicate,
   canRedo,
   canUndo,
@@ -56,6 +59,7 @@ export function CanvasPanel({
   selectedNodeId,
   themeMode,
   onAutoLayout,
+  onAddAiTask,
   onClearCanvas,
   onConnect,
   onDeleteSelected,
@@ -126,6 +130,17 @@ export function CanvasPanel({
           </button>
         </div>
       </div>
+      {isEmpty && (
+        <div className="canvas-empty-state">
+          <span>Build mode</span>
+          <strong>建立第一個 AI workflow</strong>
+          <p>從 AI 任務開始，或用左側 rail 匯入 YAML / 範例。</p>
+          <div>
+            <button type="button" onClick={onAddAiTask}>新增 AI 任務</button>
+            <button type="button" onClick={onRestoreInitialCanvas}>載入初始流程</button>
+          </div>
+        </div>
+      )}
       <ReactFlow
         colorMode={themeMode}
         defaultEdgeOptions={defaultEdgeOptions}

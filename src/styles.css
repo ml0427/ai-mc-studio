@@ -1942,3 +1942,426 @@ button {
     left: 8px;
   }
 }
+
+
+/* Hermes complete interaction redesign */
+.toolbox-panel {
+  width: 72px;
+  overflow: visible;
+  display: block;
+  background: transparent;
+  box-shadow: none;
+}
+
+.toolbox-panel:hover,
+.toolbox-panel:focus-within {
+  width: 72px;
+  box-shadow: none;
+}
+
+.toolbox-panel::after,
+.toolbox-panel:hover::after,
+.toolbox-panel:focus-within::after {
+  display: none;
+}
+
+.rail-strip {
+  width: 56px;
+  height: 100%;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  background: var(--app-panel);
+  padding: 8px;
+  box-shadow: 0 1px 2px var(--app-shadow);
+}
+
+.rail-logo,
+.rail-strip button {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--app-border);
+  border-radius: 11px;
+  background: var(--app-field);
+  color: var(--app-muted);
+}
+
+.rail-logo {
+  color: var(--app-text);
+  margin-bottom: 8px;
+}
+
+.rail-strip button {
+  cursor: pointer;
+}
+
+.rail-strip button:hover,
+.rail-strip button:focus-visible,
+.rail-strip button.active {
+  border-color: color-mix(in srgb, var(--app-accent) 55%, var(--app-border));
+  color: var(--app-text);
+  outline: 0;
+}
+
+.rail-strip button span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.drawer-panel {
+  position: absolute;
+  left: 72px;
+  top: 0;
+  bottom: 0;
+  width: 282px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--app-panel) 97%, transparent);
+  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.32);
+  padding: 12px;
+}
+
+.drawer-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.drawer-title div {
+  display: grid;
+  gap: 2px;
+}
+
+.drawer-title span {
+  color: var(--app-muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.drawer-title strong {
+  color: var(--app-text);
+  font-size: 14px;
+}
+
+.drawer-title button,
+.panel-title-actions button,
+.inspector-tab {
+  border: 1px solid var(--app-border);
+  border-radius: 9px;
+  background: var(--app-field);
+  color: var(--app-muted);
+  cursor: pointer;
+}
+
+.drawer-title button,
+.panel-title-actions button {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+}
+
+.drawer-panel .toolbox-list,
+.drawer-panel .import-panel {
+  min-height: 0;
+  overflow: auto;
+}
+
+.toolbox-panel .brand-block,
+.toolbox-panel .toolbox-top-actions,
+.toolbox-panel .palette-heading {
+  display: none;
+}
+
+.settings-panel {
+  width: min(360px, calc(100vw - 104px));
+  transform: translateX(calc(100% - 48px));
+  padding: 0;
+  overflow: visible;
+}
+
+.settings-panel:hover,
+.settings-panel:focus-within {
+  transform: translateX(calc(100% - 48px));
+  box-shadow: 0 1px 2px var(--app-shadow);
+}
+
+.settings-panel.is-open {
+  transform: translateX(0);
+  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.32);
+}
+
+.inspector-tab {
+  position: absolute;
+  left: -48px;
+  top: 14px;
+  width: 40px;
+  height: 132px;
+  display: grid;
+  place-items: center;
+  padding: 8px 4px;
+}
+
+.inspector-tab span {
+  writing-mode: vertical-rl;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.inspector-shell {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--app-panel) 97%, transparent);
+  padding: 12px;
+  overflow: hidden;
+}
+
+.settings-panel .panel-title {
+  position: static;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  writing-mode: horizontal-tb;
+}
+
+.panel-title > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.panel-title > div:first-child span {
+  color: var(--app-muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.panel-title-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.settings-panel .settings-form,
+.settings-panel .empty-settings {
+  margin-left: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.canvas-empty-state {
+  position: absolute;
+  z-index: 8;
+  left: 50%;
+  top: 50%;
+  width: min(420px, calc(100% - 48px));
+  transform: translate(-50%, -50%);
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  border: 1px solid var(--app-border);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--app-panel) 92%, transparent);
+  color: var(--app-text);
+  padding: 28px;
+  text-align: center;
+  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.24);
+}
+
+.canvas-empty-state span {
+  color: var(--app-muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.canvas-empty-state strong {
+  font-size: 22px;
+  letter-spacing: -0.03em;
+}
+
+.canvas-empty-state p {
+  margin: 0;
+  color: var(--app-muted);
+  line-height: 1.5;
+}
+
+.canvas-empty-state div {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.canvas-empty-state button {
+  min-height: 34px;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  background: var(--app-field);
+  color: var(--app-text);
+  cursor: pointer;
+  padding: 7px 12px;
+}
+
+.command-backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: start center;
+  background: rgba(0, 0, 0, 0.34);
+  padding-top: 12vh;
+}
+
+.command-palette {
+  width: min(560px, calc(100vw - 32px));
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--app-border);
+  border-radius: 16px;
+  background: var(--app-panel);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.42);
+  padding: 12px;
+}
+
+.command-input-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  background: var(--app-field);
+  color: var(--app-muted);
+  padding: 10px;
+}
+
+.command-input-row button {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--app-muted);
+  cursor: pointer;
+}
+
+.command-list {
+  display: grid;
+  gap: 6px;
+}
+
+.command-list button {
+  display: grid;
+  gap: 2px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--app-text);
+  cursor: pointer;
+  padding: 10px;
+  text-align: left;
+}
+
+.command-list button:hover,
+.command-list button:focus-visible {
+  border-color: var(--app-border);
+  background: var(--app-field);
+  outline: 0;
+}
+
+.command-list span {
+  color: var(--app-muted);
+  font-size: 12px;
+}
+
+.studio-header nav span:last-child::after {
+  content: "  / opens commands";
+  color: var(--app-muted);
+  opacity: 0.7;
+}
+
+@media (max-width: 960px) {
+  .drawer-panel {
+    width: min(282px, calc(100vw - 96px));
+  }
+
+  .settings-panel {
+    transform: translateY(calc(100% - 48px));
+  }
+
+  .settings-panel:hover,
+  .settings-panel:focus-within {
+    transform: translateY(calc(100% - 48px));
+  }
+
+  .settings-panel.is-open {
+    transform: translateY(0);
+  }
+}
+
+
+/* Final redesign fit fixes */
+.toolbox-panel {
+  position: relative;
+}
+
+.drawer-panel {
+  top: 0;
+  bottom: 0;
+}
+
+.settings-panel:not(.is-open) {
+  width: 48px;
+  pointer-events: none;
+}
+
+.settings-panel:not(.is-open) .inspector-tab {
+  pointer-events: auto;
+}
+
+.settings-panel:not(.is-open) .inspector-shell {
+  display: none;
+}
+
+.settings-panel.is-open {
+  width: min(360px, calc(100vw - 104px));
+  pointer-events: auto;
+}
+
+.settings-panel.is-open .inspector-tab {
+  left: -48px;
+}
+
+.json-panel {
+  right: 16px;
+}
+
+@media (max-width: 960px) {
+  .settings-panel:not(.is-open) {
+    width: auto;
+    height: 48px;
+  }
+}

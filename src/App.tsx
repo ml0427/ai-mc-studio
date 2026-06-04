@@ -12,6 +12,7 @@ import {
 import YAML from 'yaml'
 
 import { CanvasPanel } from './components/CanvasPanel'
+import { CommandPalette } from './components/CommandPalette'
 import { ConfirmationDialog } from './components/ConfirmationDialog'
 import { PreviewPanel } from './components/PreviewPanel'
 import { SettingsPanel } from './components/SettingsPanel'
@@ -100,6 +101,7 @@ function WorkflowEditor() {
   const [selectedImportWorkflow, setSelectedImportWorkflow] = useState(initialCanvasState.selectedWorkflowName)
   const [themeMode, setThemeMode] = useState<ThemeMode>(initialCanvasState.themeMode)
   const [confirmationRequest, setConfirmationRequest] = useState<ConfirmationRequest | null>(null)
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const { fitView, screenToFlowPosition } = useReactFlow<WorkflowNode, WorkflowEdge>()
 
@@ -522,10 +524,29 @@ function WorkflowEditor() {
     applyCanvasMutation(result.nodes, result.edges, { selectNodeId: selectedNode.id })
   }
 
+  const commandActions = [
+    { id: 'add-ai', label: '新增 AI 任務', hint: '在畫布建立最常用的任務節點', onRun: () => addNode('ai_task' as WorkflowNodeKind) },
+    { id: 'add-condition', label: '新增條件分支', hint: '建立 yes/no 或自訂分支節點', onRun: () => addNode('condition' as WorkflowNodeKind) },
+    { id: 'auto-layout', label: '自動整理畫布', hint: '重新排列目前 workflow', onRun: autoLayoutCanvas },
+    { id: 'fit-view', label: '適合畫面', hint: '讓所有節點回到視窗中', onRun: () => void fitView({ duration: 320, padding: 0.22 }) },
+    { id: 'import', label: '打開匯入', hint: '貼上或選擇 YAML / JSON', onRun: () => setShowImportPanel(true) },
+    { id: 'export', label: '打開 Export', hint: '查看並複製 ai-mc / graph / canvas 輸出', onRun: () => setShowJsonPreview(true) },
+  ]
+
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null
       const isTextInput = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA'
+      if (event.key === 'Escape' && isCommandPaletteOpen) {
+        event.preventDefault()
+        setIsCommandPaletteOpen(false)
+        return
+      }
+      if (!isTextInput && event.key === '/') {
+        event.preventDefault()
+        setIsCommandPaletteOpen(true)
+        return
+      }
       if (isTextInput) return
 
       if ((event.key === 'Delete' || event.key === 'Backspace') && hasSelectedElement) {
@@ -592,6 +613,7 @@ function WorkflowEditor() {
 
       <CanvasPanel
         canDuplicate={Boolean(selectedNodeId)}
+        isEmpty={nodes.length === 0}
         canRedo={canRedo}
         canUndo={canUndo}
         canDelete={hasSelectedElement}
@@ -601,6 +623,7 @@ function WorkflowEditor() {
         selectedNodeId={selectedNodeId}
         themeMode={themeMode}
         onAutoLayout={autoLayoutCanvas}
+        onAddAiTask={() => addNode('ai_task')}
         onClearCanvas={clearCanvas}
         onConnect={onConnect}
         onDeleteSelected={deleteSelectedElement}
@@ -645,6 +668,12 @@ function WorkflowEditor() {
         onDownloadPreview={downloadPreview}
         onPreviewModeChange={setPreviewMode}
         onToggleJsonPreview={() => setShowJsonPreview((current) => !current)}
+      />
+
+      <CommandPalette
+        actions={commandActions}
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
       />
 
       {confirmationRequest && (

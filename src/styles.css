@@ -51,7 +51,7 @@ button {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(220px, 260px) minmax(420px, 1fr) minmax(280px, 320px);
   grid-template-rows: minmax(0, 1fr) 260px;
   grid-template-areas:
     "toolbox canvas settings"
@@ -66,7 +66,7 @@ button {
 
 .app-shell.theme-light {
   --app-text: #102033;
-  --app-muted: #64748b;
+  --app-muted: #475569;
   --app-panel: rgba(248, 250, 252, 0.92);
   --app-panel-solid: #ffffff;
   --app-border: #cbd5e1;
@@ -510,7 +510,8 @@ button {
 
 .preview-controls {
   display: flex;
-  flex: 1 1 auto;
+  flex: 1 1 520px;
+  min-width: min(100%, 520px);
   align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
@@ -518,7 +519,9 @@ button {
 }
 
 .preview-mode-tabs {
-  display: inline-flex;
+  display: flex;
+  flex: 1 1 260px;
+  min-width: min(100%, 260px);
   align-items: center;
   gap: 4px;
   border: 1px solid var(--app-border);
@@ -528,7 +531,9 @@ button {
 }
 
 .preview-actions {
-  display: inline-flex;
+  display: flex;
+  flex: 1 1 420px;
+  min-width: min(100%, 300px);
   align-items: center;
   flex-wrap: wrap;
   gap: 4px;
@@ -537,6 +542,8 @@ button {
 .preview-mode-tabs button,
 .preview-actions button,
 .json-toggle {
+  flex: 1 1 auto;
+  min-width: max-content;
   min-height: 32px;
   display: inline-flex;
   align-items: center;
@@ -918,7 +925,120 @@ button {
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.14);
 }
 
-@media (max-width: 1060px) {
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  background: rgba(2, 6, 23, 0.68);
+  padding: 18px;
+}
+
+.confirm-dialog {
+  width: min(100%, 420px);
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  background: var(--app-panel-solid);
+  color: var(--app-text);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.46);
+  padding: 18px;
+}
+
+.confirm-dialog strong {
+  font-size: 16px;
+}
+
+.confirm-dialog p {
+  margin: 0;
+  color: var(--app-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.confirm-actions button {
+  min-height: 34px;
+  border: 1px solid var(--app-border);
+  border-radius: 7px;
+  background: var(--app-panel);
+  color: var(--app-text);
+  padding: 7px 12px;
+  cursor: pointer;
+}
+
+.confirm-actions button:hover,
+.confirm-actions button:focus-visible {
+  border-color: var(--app-accent);
+  outline: 0;
+}
+
+.confirm-actions .danger {
+  border-color: #f97316;
+  background: color-mix(in srgb, #f97316 18%, var(--app-panel-solid));
+}
+
+@media (max-height: 720px) and (min-width: 1201px) {
+  .toolbox-panel {
+    gap: 10px;
+    overflow: auto;
+  }
+
+  .brand-block > svg {
+    width: 36px;
+    height: 36px;
+    padding: 7px;
+  }
+
+  .brand-block strong {
+    font-size: 19px;
+  }
+
+  .import-panel textarea {
+    min-height: 92px;
+  }
+
+  .toolbox-list {
+    min-height: 240px;
+  }
+}
+
+@media (max-width: 720px) {
+  .json-title {
+    align-items: stretch;
+  }
+
+  .preview-controls {
+    justify-content: flex-start;
+  }
+
+  .preview-mode-tabs,
+  .preview-actions,
+  .json-toggle {
+    width: 100%;
+  }
+
+  .preview-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .preview-actions button,
+  .preview-mode-tabs button,
+  .json-toggle {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 1200px) {
   .app-shell {
     height: auto;
     min-height: 100vh;

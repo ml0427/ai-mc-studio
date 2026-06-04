@@ -1,0 +1,100 @@
+schema_version: 0.2-graph
+name: issue-review-flow
+language: zh-TW
+workflows:
+  main:
+    title: 問題單處理流程
+    description: 從整理 issue 到產出修復報告的圖形 workflow 範例
+    graph:
+      direction: TB
+      nodes:
+        - id: start
+          kind: start
+          title: 開始
+          description: 收到 GitHub issue 與目前專案狀態
+          output: issue_json
+        - id: summarize_issue
+          kind: ai_task
+          title: 整理問題單
+          description: 把問題單整理成可實作的任務摘要
+          purpose: 讓後續搜尋、規劃和修改都有共同目標
+          instructions:
+            - 用白話整理真正要解決的問題
+            - 列出完成後要檢查的驗收條件
+          input:
+            - issue_json
+          output: issue_summary
+        - id: needs_code_change
+          kind: condition
+          title: 是否需要修改程式
+          description: 判斷這個 issue 是文件、設定還是程式變更
+          decision_rules:
+            - 如果 issue 要求行為改變，走 code 分支
+            - 如果 issue 只要求文件，走 docs 分支
+          input:
+            - issue_summary
+          output: route
+          handles:
+            - id: code
+              label: 程式
+              position: right
+            - id: docs
+              label: 文件
+              position: left
+        - id: edit_code
+          kind: code_edit
+          title: 修改程式
+          description: 套用最小可驗證的程式碼變更
+          input:
+            - issue_summary
+          output: patch
+        - id: update_docs
+          kind: file
+          title: 更新文件
+          description: 補上 README 或範例說明
+          input:
+            - issue_summary
+          output: docs_patch
+        - id: verify
+          kind: shell
+          title: 驗證
+          description: 執行 lint、test、build
+          instructions:
+            - npm run lint
+            - npm test
+            - npm run build
+          input:
+            - patch
+            - docs_patch
+          output: verification
+        - id: final_report
+          kind: output
+          title: 回報結果
+          description: 摘要變更、驗證結果與剩餘風險
+          input:
+            - verification
+          output: report
+      edges:
+        - from: start
+          to: summarize_issue
+          label: 下一步
+        - from: summarize_issue
+          to: needs_code_change
+          label: 判斷
+        - from: needs_code_change
+          sourceHandle: code
+          to: edit_code
+          label: 程式
+        - from: needs_code_change
+          sourceHandle: docs
+          to: update_docs
+          label: 文件
+        - from: edit_code
+          to: verify
+          label: 驗證
+        - from: update_docs
+          to: verify
+          label: 驗證
+        - from: verify
+          to: final_report
+          label: 完成

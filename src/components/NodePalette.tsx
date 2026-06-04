@@ -1,4 +1,4 @@
-import { Bot, Circle, Code2, FileText, GitBranch, Hand, Plus, Square, Terminal, Wrench } from 'lucide-react'
+import { Bot, Circle, Code2, FileText, GitBranch, Hand, Square, Terminal, Wrench } from 'lucide-react'
 
 import { nodeTemplateMetadata, toolboxGroups } from '../workflow/templates'
 import type { WorkflowNodeKind } from '../workflow/types'
@@ -39,14 +39,12 @@ export function NodePalette({ onAddNode }: NodePaletteProps) {
                 className={`toolbox-node type-${template.kind}`}
                 key={template.kind}
                 type="button"
+                title={template.description}
                 onClick={() => onAddNode(template.kind)}
               >
-                <Icon size={18} />
-                <span>
-                  <strong>{template.title}</strong>
-                  <small>{template.description}</small>
-                </span>
-                <Plus size={16} />
+                <span className="toolbox-node-dot" aria-hidden="true" />
+                <Icon size={16} />
+                <strong>{template.title}</strong>
               </button>
             )
           })}

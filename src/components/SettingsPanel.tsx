@@ -25,60 +25,68 @@ export function SettingsPanel({
   return (
     <aside className="settings-panel" aria-label="節點設定">
       <div className="panel-title">
-        <PanelRight size={18} />
-        <strong>節點設定</strong>
+        <PanelRight size={17} />
+        <strong>Inspector</strong>
       </div>
 
       {selectedNode ? (
         <form className="settings-form">
-          <div className={`kind-pill type-${selectedNode.data.kind}`}>
-            {nodeTypeLabels[selectedNode.data.kind]}
+          <div className="inspector-heading">
+            <div className={`kind-pill type-${selectedNode.data.kind}`}>
+              {nodeTypeLabels[selectedNode.data.kind]}
+            </div>
+            <span>{selectedNode.id}</span>
           </div>
-          <label>
-            <span>標題</span>
-            <input
-              value={selectedNode.data.title}
-              onChange={(event) => onUpdateSelectedNode('title', event.target.value)}
-            />
-          </label>
-          <label>
-            <span>說明</span>
-            <textarea
-              value={selectedNode.data.description}
-              onChange={(event) => onUpdateSelectedNode('description', event.target.value)}
-            />
-          </label>
-          <label>
-            <span>目的</span>
-            <textarea
-              value={selectedNode.data.purpose}
-              onChange={(event) => onUpdateSelectedNode('purpose', event.target.value)}
-              placeholder="這一步為什麼存在？它要幫後續流程解決什麼問題？"
-            />
-          </label>
-          <label>
-            <span>執行指示</span>
-            <textarea
-              value={selectedNode.data.instructions}
-              onChange={(event) => onUpdateSelectedNode('instructions', event.target.value)}
-              placeholder="一行一個指示，例如：整理成白話、列出驗收條件"
-            />
-          </label>
-          <label>
-            <span>判斷規則</span>
-            <textarea
-              value={selectedNode.data.decisionRules}
-              onChange={(event) => onUpdateSelectedNode('decisionRules', event.target.value)}
-              placeholder="條件節點用：什麼情況走是？什麼情況走否？"
-            />
-          </label>
+
+          <section className="settings-section">
+            <strong>Basic</strong>
+            <label>
+              <span>標題</span>
+              <input
+                value={selectedNode.data.title}
+                onChange={(event) => onUpdateSelectedNode('title', event.target.value)}
+              />
+            </label>
+            <label>
+              <span>說明</span>
+              <textarea
+                className="textarea-compact"
+                value={selectedNode.data.description}
+                onChange={(event) => onUpdateSelectedNode('description', event.target.value)}
+              />
+            </label>
+          </section>
+
+          {(selectedNode.data.kind === 'condition' || selectedNode.data.kind === 'ai_task') && (
+            <section className="settings-section">
+              <strong>Logic</strong>
+              <label>
+                <span>執行指示</span>
+                <textarea
+                  value={selectedNode.data.instructions}
+                  onChange={(event) => onUpdateSelectedNode('instructions', event.target.value)}
+                  placeholder="一行一個指示，例如：整理成白話、列出驗收條件"
+                />
+              </label>
+              <label>
+                <span>判斷規則</span>
+                <textarea
+                  className="textarea-compact"
+                  value={selectedNode.data.decisionRules}
+                  onChange={(event) => onUpdateSelectedNode('decisionRules', event.target.value)}
+                  placeholder="條件節點用：什麼情況走是？什麼情況走否？"
+                />
+              </label>
+            </section>
+          )}
+
           {selectedNode.data.kind === 'condition' && (
             <section className="branch-editor" aria-label="條件分支編輯">
               <div className="branch-editor-title">
-                <strong>分支出口</strong>
+                <strong>Branches</strong>
                 <button type="button" onClick={onAddBranch}>
                   <Plus size={14} />
-                  新增分支
+                  新增
                 </button>
               </div>
               {branchHandles.map((handle) => (
@@ -97,27 +105,39 @@ export function SettingsPanel({
               ))}
             </section>
           )}
-          <label>
-            <span>輸入</span>
-            <input
-              value={selectedNode.data.input}
-              onChange={(event) => onUpdateSelectedNode('input', event.target.value)}
-              placeholder="例如：上一個節點的輸出"
-            />
-          </label>
-          <label>
-            <span>輸出</span>
-            <input
-              value={selectedNode.data.output}
-              onChange={(event) => onUpdateSelectedNode('output', event.target.value)}
-              placeholder={selectedNode.id}
-            />
-          </label>
+
+          <details className="settings-section advanced-section">
+            <summary>Advanced</summary>
+            <label>
+              <span>目的</span>
+              <textarea
+                value={selectedNode.data.purpose}
+                onChange={(event) => onUpdateSelectedNode('purpose', event.target.value)}
+                placeholder="這一步為什麼存在？它要幫後續流程解決什麼問題？"
+              />
+            </label>
+            <label>
+              <span>輸入</span>
+              <input
+                value={selectedNode.data.input}
+                onChange={(event) => onUpdateSelectedNode('input', event.target.value)}
+                placeholder="例如：上一個節點的輸出"
+              />
+            </label>
+            <label>
+              <span>輸出</span>
+              <input
+                value={selectedNode.data.output}
+                onChange={(event) => onUpdateSelectedNode('output', event.target.value)}
+                placeholder={selectedNode.id}
+              />
+            </label>
+          </details>
         </form>
       ) : (
         <div className="empty-settings">
-          <strong>還沒選節點</strong>
-          <span>點一下畫布上的節點，就能在這裡編輯內容。</span>
+          <strong>選一個節點開始編輯</strong>
+          <span>畫布保持乾淨；細節會在這裡出現。</span>
         </div>
       )}
     </aside>

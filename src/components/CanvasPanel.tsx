@@ -9,7 +9,7 @@ import {
   type OnNodesChange,
   type OnReconnect,
 } from '@xyflow/react'
-import { Copy, Redo2, RotateCcw, Route, Trash2, Undo2 } from 'lucide-react'
+import { Copy, Maximize2, MoreHorizontal, Redo2, RotateCcw, Route, Trash2, Undo2 } from 'lucide-react'
 
 import { defaultEdgeOptions } from '../workflow/edges'
 import { nodeColor } from '../workflow/templates'
@@ -83,39 +83,48 @@ export function CanvasPanel({
 
   return (
     <section className="canvas-panel" aria-label="流程圖畫布">
-      <div className="canvas-actions">
-        <button type="button" onClick={onAutoLayout}>
-          <Route size={15} />
-          自動整理
-        </button>
-        <button type="button" onClick={onFitView}>
-          <Route size={15} />
-          適合畫面
-        </button>
-        <button type="button" onClick={onDuplicateSelected} disabled={!canDuplicate}>
-          <Copy size={15} />
-          複製
-        </button>
-        <button type="button" onClick={onDeleteSelected} disabled={!canDelete}>
-          <Trash2 size={15} />
-          刪除
-        </button>
-        <button type="button" onClick={onUndo} disabled={!canUndo}>
-          <Undo2 size={15} />
-          復原
-        </button>
-        <button type="button" onClick={onRedo} disabled={!canRedo}>
-          <Redo2 size={15} />
-          重做
-        </button>
-        <button type="button" onClick={onRestoreInitialCanvas}>
-          <RotateCcw size={15} />
-          還原初始
-        </button>
-        <button type="button" onClick={onClearCanvas}>
-          <Trash2 size={15} />
-          清空
-        </button>
+      <div className="canvas-actions" aria-label="畫布操作">
+        <div className="canvas-action-group" aria-label="歷史">
+          <button type="button" onClick={onUndo} disabled={!canUndo} title="復原">
+            <Undo2 size={15} />
+            <span>復原</span>
+          </button>
+          <button type="button" onClick={onRedo} disabled={!canRedo} title="重做">
+            <Redo2 size={15} />
+            <span>重做</span>
+          </button>
+        </div>
+        <div className="canvas-action-group" aria-label="視圖">
+          <button type="button" onClick={onFitView} title="適合畫面">
+            <Maximize2 size={15} />
+            <span>適合</span>
+          </button>
+          <button type="button" onClick={onAutoLayout} title="自動整理">
+            <Route size={15} />
+            <span>整理</span>
+          </button>
+        </div>
+        <div className="canvas-action-group" aria-label="選取項目">
+          <button type="button" onClick={onDuplicateSelected} disabled={!canDuplicate} title="複製選取節點">
+            <Copy size={15} />
+            <span>複製</span>
+          </button>
+          <button type="button" onClick={onDeleteSelected} disabled={!canDelete} title="刪除選取項目">
+            <Trash2 size={15} />
+            <span>刪除</span>
+          </button>
+        </div>
+        <div className="canvas-action-group canvas-action-group-secondary" aria-label="更多">
+          <MoreHorizontal size={15} aria-hidden="true" />
+          <button type="button" onClick={onRestoreInitialCanvas} title="還原初始畫布">
+            <RotateCcw size={15} />
+            <span>初始</span>
+          </button>
+          <button type="button" onClick={onClearCanvas} title="清空畫布">
+            <Trash2 size={15} />
+            <span>清空</span>
+          </button>
+        </div>
       </div>
       <ReactFlow
         colorMode={themeMode}
@@ -134,10 +143,10 @@ export function CanvasPanel({
         onPaneClick={onPaneClick}
         onReconnect={onReconnect}
       >
-        <Background color={themeMode === 'dark' ? '#273248' : '#cbd5e1'} gap={28} />
+        <Background color={themeMode === 'dark' ? '#293241' : '#d7dde8'} gap={28} />
         <Controls position="top-right" />
         <MiniMap
-          maskColor={themeMode === 'dark' ? 'rgba(7, 10, 18, 0.72)' : 'rgba(226, 232, 240, 0.58)'}
+          maskColor={themeMode === 'dark' ? 'rgba(8, 11, 18, 0.72)' : 'rgba(248, 250, 252, 0.68)'}
           nodeColor={(node) => nodeColor((node as WorkflowNode).data.kind)}
           pannable
           zoomable

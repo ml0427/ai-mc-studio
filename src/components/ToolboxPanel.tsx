@@ -45,22 +45,23 @@ export function ToolboxPanel({
   return (
     <aside className="toolbox-panel" aria-label="節點工具箱">
       <div className="brand-block">
-        <Route size={24} />
+        <Route size={18} />
         <div>
-          <span>AI 流程圖</span>
-          <strong>拖拉式編輯器</strong>
+          <strong>AI-MC Studio</strong>
+          <span>Workflow canvas</span>
         </div>
       </div>
 
-      <button className="theme-toggle" type="button" onClick={onToggleTheme}>
-        {themeMode === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-        {themeMode === 'dark' ? '亮色' : '暗色'}
-      </button>
-
-      <button className="import-toggle" type="button" onClick={onToggleImportPanel}>
-        <FileInput size={16} />
-        匯入 ai-mc
-      </button>
+      <div className="toolbox-top-actions">
+        <button className="import-toggle" type="button" onClick={onToggleImportPanel}>
+          <FileInput size={15} />
+          匯入
+        </button>
+        <button className="theme-toggle" type="button" onClick={onToggleTheme}>
+          {themeMode === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+          {themeMode === 'dark' ? '亮色' : '暗色'}
+        </button>
+      </div>
 
       {showImportPanel && (
         <section className="import-panel" aria-label="匯入 ai-mc workflow">
@@ -95,20 +96,23 @@ export function ToolboxPanel({
               選檔案
             </button>
             <button type="button" onClick={onUseSampleImport}>
-              放範例
+              範例
             </button>
             <button type="button" onClick={onImportAiMcWorkflow} disabled={!importText.trim()}>
               匯入
             </button>
             <button type="button" onClick={onImportCanvasBackup} disabled={!importText.trim()}>
               <Upload size={14} />
-              畫布備份
+              備份
             </button>
           </div>
           {importMessage && <p>{importMessage}</p>}
         </section>
       )}
 
+      <div className="palette-heading">
+        <span>新增節點</span>
+      </div>
       <NodePalette onAddNode={onAddNode} />
     </aside>
   )

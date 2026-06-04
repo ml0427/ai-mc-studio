@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronUp, Copy, Download } from 'lucide-react'
 
 import type { PreviewMode } from '../workflow/types'
 
@@ -30,49 +30,27 @@ export function PreviewPanel({
   return (
     <section className="json-panel" aria-label="目前流程資料">
       <div className="json-title">
-        <div>
-          <strong>{previewTitle(previewMode)}</strong>
-          <span>{nodeCount} 個節點 / {edgeCount} 條線</span>
+        <div className="json-summary">
+          <strong>Export</strong>
+          <span>{nodeCount} nodes / {edgeCount} edges</span>
         </div>
         <div className="preview-controls">
-          <div className="preview-mode-tabs" role="tablist" aria-label="預覽格式">
-            <button
-              aria-selected={previewMode === 'aiMc'}
-              role="tab"
-              type="button"
-              onClick={() => onPreviewModeChange('aiMc')}
-            >
-              ai-mc 格式
-            </button>
-            <button
-              aria-selected={previewMode === 'graph'}
-              role="tab"
-              type="button"
-              onClick={() => onPreviewModeChange('graph')}
-            >
-              graph YAML
-            </button>
-            <button
-              aria-selected={previewMode === 'canvas'}
-              role="tab"
-              type="button"
-              onClick={() => onPreviewModeChange('canvas')}
-            >
-              畫布資料
-            </button>
-          </div>
+          <label className="preview-mode-select">
+            <span>格式</span>
+            <select value={previewMode} onChange={(event) => onPreviewModeChange(event.target.value as PreviewMode)}>
+              <option value="aiMc">ai-mc JSON</option>
+              <option value="graph">graph YAML</option>
+              <option value="canvas">canvas JSON</option>
+            </select>
+          </label>
           <div className="preview-actions" aria-label="預覽操作">
             <button type="button" onClick={onCopyActivePreview}>
-              複製目前預覽
+              <Copy size={14} />
+              複製
             </button>
-            <button type="button" onClick={() => onDownloadPreview('aiMc')}>
-              下載 ai-mc JSON
-            </button>
-            <button type="button" onClick={() => onDownloadPreview('graph')}>
-              下載 graph YAML
-            </button>
-            <button type="button" onClick={() => onDownloadPreview('canvas')}>
-              下載畫布 JSON
+            <button type="button" onClick={() => onDownloadPreview(previewMode)}>
+              <Download size={14} />
+              下載
             </button>
           </div>
           <button
@@ -82,7 +60,7 @@ export function PreviewPanel({
             onClick={onToggleJsonPreview}
           >
             {showJsonPreview ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
-            {showJsonPreview ? '隱藏下方欄位' : '顯示下方欄位'}
+            {showJsonPreview ? '收合' : '展開'}
           </button>
         </div>
       </div>
@@ -91,13 +69,18 @@ export function PreviewPanel({
           {previewActionMessage}
         </p>
       )}
-      {showJsonPreview && <pre>{activePreview}</pre>}
+      {showJsonPreview && (
+        <div className="preview-body">
+          <div className="preview-body-title">{previewTitle(previewMode)}</div>
+          <pre>{activePreview}</pre>
+        </div>
+      )}
     </section>
   )
 }
 
 function previewTitle(previewMode: PreviewMode) {
-  if (previewMode === 'aiMc') return 'ai-mc workflow 預覽'
-  if (previewMode === 'graph') return 'graph YAML 預覽'
-  return '畫布資料'
+  if (previewMode === 'aiMc') return 'ai-mc workflow preview'
+  if (previewMode === 'graph') return 'graph YAML preview'
+  return 'canvas data preview'
 }

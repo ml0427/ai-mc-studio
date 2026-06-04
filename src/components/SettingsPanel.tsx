@@ -1,14 +1,27 @@
-import { PanelRight } from 'lucide-react'
+import { PanelRight, Plus, Trash2 } from 'lucide-react'
 
-import { nodeTypeLabels } from '../workflow/templates'
+import { defaultConditionBranchHandles, nodeTypeLabels } from '../workflow/templates'
 import type { EditableField, WorkflowNode } from '../workflow/types'
 
 type SettingsPanelProps = {
   selectedNode: WorkflowNode | null
+  onAddBranch: () => void
+  onRemoveBranch: (handleId: string) => void
+  onRenameBranch: (handleId: string, label: string) => void
   onUpdateSelectedNode: (field: EditableField, value: string) => void
 }
 
-export function SettingsPanel({ selectedNode, onUpdateSelectedNode }: SettingsPanelProps) {
+export function SettingsPanel({
+  selectedNode,
+  onAddBranch,
+  onRemoveBranch,
+  onRenameBranch,
+  onUpdateSelectedNode,
+}: SettingsPanelProps) {
+  const branchHandles = selectedNode?.data.kind === 'condition'
+    ? selectedNode.data.branchHandles?.length ? selectedNode.data.branchHandles : defaultConditionBranchHandles
+    : []
+
   return (
     <aside className="settings-panel" aria-label="節點設定">
       <div className="panel-title">
@@ -59,6 +72,31 @@ export function SettingsPanel({ selectedNode, onUpdateSelectedNode }: SettingsPa
               placeholder="條件節點用：什麼情況走是？什麼情況走否？"
             />
           </label>
+          {selectedNode.data.kind === 'condition' && (
+            <section className="branch-editor" aria-label="條件分支編輯">
+              <div className="branch-editor-title">
+                <strong>分支出口</strong>
+                <button type="button" onClick={onAddBranch}>
+                  <Plus size={14} />
+                  新增分支
+                </button>
+              </div>
+              {branchHandles.map((handle) => (
+                <label className="branch-row" key={handle.id}>
+                  <span>{handle.id}</span>
+                  <input
+                    value={handle.label}
+                    onChange={(event) => onRenameBranch(handle.id, event.target.value)}
+                    placeholder="分支標籤"
+                  />
+                  <button type="button" onClick={() => onRemoveBranch(handle.id)} disabled={branchHandles.length <= 1}>
+                    <Trash2 size={14} />
+                    移除
+                  </button>
+                </label>
+              ))}
+            </section>
+          )}
           <label>
             <span>輸入</span>
             <input

@@ -377,6 +377,17 @@ button {
   outline: 0;
 }
 
+.canvas-actions button:disabled {
+  border-color: var(--app-border);
+  color: var(--app-muted);
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.canvas-actions button:disabled:hover {
+  background: color-mix(in srgb, var(--app-panel-solid) 86%, transparent);
+}
+
 .settings-panel {
   grid-area: settings;
   display: flex;
@@ -455,6 +466,52 @@ button {
   min-height: 116px;
   resize: vertical;
   line-height: 1.45;
+}
+
+.branch-editor {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--app-panel-solid) 72%, transparent);
+  padding: 10px;
+}
+
+.branch-editor-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.branch-editor-title strong {
+  color: var(--app-text);
+  font-size: 13px;
+}
+
+.branch-editor-title button,
+.branch-row button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  background: var(--app-field);
+  color: var(--app-text);
+  padding: 7px 8px;
+  cursor: pointer;
+}
+
+.branch-row {
+  grid-template-columns: minmax(42px, auto) minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.branch-row button:disabled {
+  color: var(--app-muted);
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 
 .empty-settings {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import {
   addEdge,
   ReactFlowProvider,
@@ -17,12 +17,20 @@ import { PreviewPanel } from './components/PreviewPanel'
 import { SettingsPanel } from './components/SettingsPanel'
 import { ToolboxPanel } from './components/ToolboxPanel'
 import { toAiMcWorkflowSpec, toGraphWorkflowSpec } from './workflow/convert'
+import {
+  addBranchHandle,
+  deleteCanvasSelection,
+  duplicateNode,
+  layoutWorkflowCanvas,
+  removeBranchHandle,
+  renameBranchHandle,
+} from './workflow/canvasEditing'
 import { edgeLabel, edgeOptionsForConnection } from './workflow/edges'
 import { sampleImport } from './workflow/examples'
 import { localizeWorkflowTerm } from './workflow/localization'
 import { parseAiMcWorkflow, workflowNamesFromText } from './workflow/parse'
 import { createCanvasBackup, parseCanvasBackup, readCanvasStateFromStorage, writeCanvasStateToStorage } from './workflow/persistence'
-import { initialEdges, initialNodes, nodeTemplateMetadata } from './workflow/templates'
+import { defaultConditionBranchHandles, initialEdges, initialNodes, nodeTemplateMetadata } from './workflow/templates'
 import type { PersistedCanvasState } from './workflow/persistence'
 import type { EditableField, PreviewMode, ThemeMode, WorkflowEdge, WorkflowNode, WorkflowNodeKind } from './workflow/types'
 
@@ -38,6 +46,11 @@ type ConfirmationRequest = {
   action: string
   onConfirm: () => void
   onCancel?: () => void
+}
+
+type CanvasSnapshot = {
+  edges: WorkflowEdge[]
+  nodes: WorkflowNode[]
 }
 
 function readInitialCanvasState() {
@@ -73,6 +86,9 @@ function WorkflowEditor() {
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode>(initialCanvasState.nodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState<WorkflowEdge>(initialCanvasState.edges)
   const [selectedNodeId, setSelectedNodeId] = useState<string>(initialCanvasState.nodes[0]?.id ?? '')
+  const [selectedEdgeId, setSelectedEdgeId] = useState('')
+  const [pastCanvasStates, setPastCanvasStates] = useState<CanvasSnapshot[]>([])
+  const [futureCanvasStates, setFutureCanvasStates] = useState<CanvasSnapshot[]>([])
   const [showJsonPreview, setShowJsonPreview] = useState(false)
   const [previewMode, setPreviewMode] = useState<PreviewMode>(initialCanvasState.previewMode)
   const [previewActionMessage, setPreviewActionMessage] = useState('')
@@ -91,6 +107,22 @@ function WorkflowEditor() {
     () => nodes.find((node) => node.id === selectedNodeId) ?? null,
     [nodes, selectedNodeId],
   )
+  const canUndo = pastCanvasStates.length > 0
+  const canRedo = futureCanvasStates.length > 0
+  const hasSelectedElement = Boolean(selectedNodeId || selectedEdgeId)
+
+  function currentCanvasSnapshot(): CanvasSnapshot {
+    return { nodes, edges }
+  }
+
+  function applyCanvasMutation(nextNodes: WorkflowNode[], nextEdges: WorkflowEdge[], options: { selectEdgeId?: string; selectNodeId?: string } = {}) {
+    setPastCanvasStates((current) => [...current, currentCanvasSnapshot()].slice(-40))
+    setFutureCanvasStates([])
+    setNodes(nextNodes)
+    setEdges(nextEdges)
+    setSelectedNodeId(options.selectNodeId ?? '')
+    setSelectedEdgeId(options.selectEdgeId ?? '')
+  }
 
   const canvasPreview = useMemo(() => createCanvasBackup({
     nodes,
@@ -101,7 +133,7 @@ function WorkflowEditor() {
   }), [currentWorkflowName, edges, nodes, previewMode, themeMode])
   const aiMcPreview = useMemo(() => JSON.stringify(toAiMcWorkflowSpec(nodes, edges), null, 2), [edges, nodes])
   const graphPreview = useMemo(() => YAML.stringify(toGraphWorkflowSpec(nodes, edges)), [edges, nodes])
-  const previewByMode = useCallback((mode: PreviewMode) => {
+  function previewByMode(mode: PreviewMode) {
     switch (mode) {
       case 'aiMc':
         return aiMcPreview
@@ -110,7 +142,7 @@ function WorkflowEditor() {
       case 'canvas':
         return canvasPreview
     }
-  }, [aiMcPreview, canvasPreview, graphPreview])
+  }
   const activePreview = previewByMode(previewMode)
 
   useEffect(() => {
@@ -227,13 +259,58 @@ function WorkflowEditor() {
     })
   }
 
+  function undoCanvasChange() {
+    setPastCanvasStates((past) => {
+      const previous = past.at(-1)
+      if (!previous) return past
+      setFutureCanvasStates((future) => [currentCanvasSnapshot(), ...future].slice(0, 40))
+      setNodes(previous.nodes)
+      setEdges(previous.edges)
+      setSelectedNodeId(previous.nodes[0]?.id ?? '')
+      setSelectedEdgeId('')
+      return past.slice(0, -1)
+    })
+  }
+
+  function redoCanvasChange() {
+    setFutureCanvasStates((future) => {
+      const next = future[0]
+      if (!next) return future
+      setPastCanvasStates((past) => [...past, currentCanvasSnapshot()].slice(-40))
+      setNodes(next.nodes)
+      setEdges(next.edges)
+      setSelectedNodeId(next.nodes[0]?.id ?? '')
+      setSelectedEdgeId('')
+      return future.slice(1)
+    })
+  }
+
+  function deleteSelectedElement() {
+    const result = deleteCanvasSelection(nodes, edges, { nodeId: selectedNodeId, edgeId: selectedEdgeId })
+    applyCanvasMutation(result.nodes, result.edges)
+    setPreviewActionMessage('已刪除選取項目。')
+  }
+
+  function duplicateSelectedNode() {
+    if (!selectedNodeId) return
+    const result = duplicateNode(nodes, selectedNodeId)
+    if (!result) return
+    applyCanvasMutation(result.nodes, edges, { selectNodeId: result.node.id })
+    setPreviewActionMessage('已複製選取節點。')
+  }
+
+  function autoLayoutCanvas() {
+    const nextNodes = layoutWorkflowCanvas(nodes, edges)
+    applyCanvasMutation(nextNodes, edges, { selectNodeId: selectedNodeId })
+    setPreviewActionMessage('已自動整理節點位置。')
+    fitCanvasAfterReplace()
+  }
+
   function applyCanvasState(nextState: PersistedCanvasState, message: string) {
     requestCanvasOverwrite(
       '匯入',
       () => {
-        setNodes(nextState.nodes)
-        setEdges(nextState.edges)
-        setSelectedNodeId(nextState.nodes[0]?.id ?? '')
+        applyCanvasMutation(nextState.nodes, nextState.edges, { selectNodeId: nextState.nodes[0]?.id ?? '' })
         setPreviewMode(nextState.previewMode)
         setThemeMode(nextState.themeMode)
         setImportWorkflowNames([])
@@ -258,9 +335,7 @@ function WorkflowEditor() {
 
   function clearCanvas() {
     requestCanvasOverwrite('清空', () => {
-      setNodes([])
-      setEdges([])
-      setSelectedNodeId('')
+      applyCanvasMutation([], [])
       setCurrentWorkflowName('')
       setSelectedImportWorkflow('')
       setPreviewActionMessage('已清空畫布。')
@@ -269,9 +344,7 @@ function WorkflowEditor() {
 
   function restoreInitialCanvas() {
     requestCanvasOverwrite('還原初始畫布', () => {
-      setNodes(initialNodes)
-      setEdges(initialEdges)
-      setSelectedNodeId(initialNodes[0]?.id ?? '')
+      applyCanvasMutation(initialNodes, initialEdges, { selectNodeId: initialNodes[0]?.id ?? '' })
       setCurrentWorkflowName('')
       setSelectedImportWorkflow('')
       setPreviewMode('aiMc')
@@ -280,9 +353,9 @@ function WorkflowEditor() {
     })
   }
 
-  const onConnect = useCallback((connection: Connection) => {
+  function onConnect(connection: Connection) {
     const sourceNode = nodes.find((node) => node.id === connection.source)
-    setEdges((currentEdges) => addEdge({
+    const nextEdge = {
       ...connection,
       ...edgeOptionsForConnection(
         sourceNode?.data.kind,
@@ -291,10 +364,11 @@ function WorkflowEditor() {
         sourceNode?.data.branchHandles,
       ),
       id: `${connection.source}:${connection.sourceHandle}->${connection.target}:${connection.targetHandle}`,
-    }, currentEdges))
-  }, [nodes, setEdges])
+    }
+    applyCanvasMutation(nodes, addEdge(nextEdge, edges), { selectEdgeId: nextEdge.id })
+  }
 
-  const onReconnect = useCallback<OnReconnect<WorkflowEdge>>((oldEdge, newConnection) => {
+  const onReconnect: OnReconnect<WorkflowEdge> = (oldEdge, newConnection) => {
     const sourceNode = nodes.find((node) => node.id === newConnection.source)
     const preservedLabel = oldEdge.source === newConnection.source && oldEdge.sourceHandle === newConnection.sourceHandle
       ? edgeLabel(oldEdge)
@@ -317,8 +391,8 @@ function WorkflowEditor() {
       ...nextEdgeOptions,
       id: `${newConnection.source}:${newConnection.sourceHandle}->${newConnection.target}:${newConnection.targetHandle}`,
     }
-    setEdges((currentEdges) => reconnectEdge(oldEdge, nextEdge, currentEdges))
-  }, [nodes, setEdges])
+    applyCanvasMutation(nodes, reconnectEdge(oldEdge, nextEdge, edges), { selectEdgeId: nextEdge.id })
+  }
 
   function addNode(kind: WorkflowNodeKind) {
     const template = nodeTemplateMetadata.find((item) => item.kind === kind) ?? nodeTemplateMetadata[1]
@@ -342,11 +416,11 @@ function WorkflowEditor() {
         decisionRules: '',
         input: '',
         output: kind === 'start' ? 'start' : id,
+        branchHandles: kind === 'condition' ? defaultConditionBranchHandles.map((handle) => ({ ...handle })) : undefined,
       },
     }
 
-    setNodes((currentNodes) => [...currentNodes, nextNode])
-    setSelectedNodeId(id)
+    applyCanvasMutation([...nodes, nextNode], edges, { selectNodeId: id })
   }
 
   function applyImportedWorkflow(value: string, workflowName = selectedImportWorkflow) {
@@ -359,9 +433,7 @@ function WorkflowEditor() {
       requestCanvasOverwrite(
         '匯入',
         () => {
-          setNodes(imported.nodes)
-          setEdges(imported.edges)
-          setSelectedNodeId(imported.nodes[0]?.id ?? '')
+          applyCanvasMutation(imported.nodes, imported.edges, { selectNodeId: imported.nodes[0]?.id ?? '' })
           setPreviewMode('aiMc')
           setImportWorkflowNames(nextWorkflowNames)
           setCurrentWorkflowName(imported.workflowName)
@@ -424,12 +496,66 @@ function WorkflowEditor() {
 
   function updateSelectedNode(field: EditableField, value: string) {
     if (!selectedNode) return
-    setNodes((currentNodes) => currentNodes.map((node) => (
+    const nextNodes = nodes.map((node) => (
       node.id === selectedNode.id
         ? { ...node, data: { ...node.data, [field]: value } }
         : node
-    )))
+    ))
+    applyCanvasMutation(nextNodes, edges, { selectNodeId: selectedNode.id })
   }
+
+  function addSelectedNodeBranch() {
+    if (!selectedNode) return
+    const result = addBranchHandle(nodes, selectedNode.id)
+    applyCanvasMutation(result.nodes, edges, { selectNodeId: selectedNode.id })
+  }
+
+  function renameSelectedNodeBranch(handleId: string, label: string) {
+    if (!selectedNode) return
+    const result = renameBranchHandle(nodes, edges, selectedNode.id, handleId, label)
+    applyCanvasMutation(result.nodes, result.edges, { selectNodeId: selectedNode.id })
+  }
+
+  function removeSelectedNodeBranch(handleId: string) {
+    if (!selectedNode) return
+    const result = removeBranchHandle(nodes, edges, selectedNode.id, handleId)
+    applyCanvasMutation(result.nodes, result.edges, { selectNodeId: selectedNode.id })
+  }
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null
+      const isTextInput = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA'
+      if (isTextInput) return
+
+      if ((event.key === 'Delete' || event.key === 'Backspace') && hasSelectedElement) {
+        event.preventDefault()
+        deleteSelectedElement()
+        return
+      }
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd' && selectedNodeId) {
+        event.preventDefault()
+        duplicateSelectedNode()
+        return
+      }
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+        event.preventDefault()
+        if (event.shiftKey) redoCanvasChange()
+        else undoCanvasChange()
+        return
+      }
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') {
+        event.preventDefault()
+        redoCanvasChange()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  })
 
   return (
     <main className={`app-shell theme-${themeMode} ${showJsonPreview ? '' : 'json-hidden'}`}>
@@ -453,22 +579,46 @@ function WorkflowEditor() {
       />
 
       <CanvasPanel
+        canDuplicate={Boolean(selectedNodeId)}
+        canRedo={canRedo}
+        canUndo={canUndo}
+        canDelete={hasSelectedElement}
         edges={edges}
         nodes={nodes}
+        selectedEdgeId={selectedEdgeId}
+        selectedNodeId={selectedNodeId}
         themeMode={themeMode}
+        onAutoLayout={autoLayoutCanvas}
         onClearCanvas={clearCanvas}
         onConnect={onConnect}
+        onDeleteSelected={deleteSelectedElement}
+        onDuplicateSelected={duplicateSelectedNode}
         onEdgesChange={onEdgesChange}
         onFitView={() => void fitView({ duration: 320, padding: 0.22 })}
         onNodesChange={onNodesChange}
-        onNodeSelect={setSelectedNodeId}
-        onPaneClick={() => setSelectedNodeId('')}
+        onNodeSelect={(nodeId) => {
+          setSelectedNodeId(nodeId)
+          setSelectedEdgeId('')
+        }}
+        onEdgeSelect={(edgeId) => {
+          setSelectedEdgeId(edgeId)
+          setSelectedNodeId('')
+        }}
+        onPaneClick={() => {
+          setSelectedNodeId('')
+          setSelectedEdgeId('')
+        }}
         onReconnect={onReconnect}
+        onRedo={redoCanvasChange}
         onRestoreInitialCanvas={restoreInitialCanvas}
+        onUndo={undoCanvasChange}
       />
 
       <SettingsPanel
         selectedNode={selectedNode}
+        onAddBranch={addSelectedNodeBranch}
+        onRemoveBranch={removeSelectedNodeBranch}
+        onRenameBranch={renameSelectedNodeBranch}
         onUpdateSelectedNode={updateSelectedNode}
       />
 
